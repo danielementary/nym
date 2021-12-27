@@ -3803,6 +3803,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nymcash"
+version = "0.1.0"
+
+[[package]]
 name = "nymcoconut"
 version = "0.5.0"
 dependencies = [

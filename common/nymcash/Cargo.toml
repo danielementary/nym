@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 nymcoconut = { path = "../nymcoconut" }
 bls12_381 = { version = "0.5", default-features = false, features = ["pairings", "alloc", "experimental"] }
+group = { version = "0.10", default-features = false }

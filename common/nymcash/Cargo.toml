@@ -9,3 +9,4 @@ edition = "2021"
 nymcoconut = { path = "../nymcoconut" }
 bls12_381 = { version = "0.5", default-features = false, features = ["pairings", "alloc", "experimental"] }
 group = { version = "0.10", default-features = false }
+itertools = "0.10"

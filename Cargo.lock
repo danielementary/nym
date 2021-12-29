@@ -3808,6 +3808,7 @@ version = "0.1.0"
 dependencies = [
  "bls12_381",
  "group",
+ "itertools",
  "nymcoconut",
 ]
 

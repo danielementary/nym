@@ -1,4 +1,4 @@
-use bls12_381::{G1Projective, Scalar};
+use bls12_381::Scalar;
 use nymcoconut::{CoconutError, Parameters};
 
 pub struct ECashParams {
@@ -21,6 +21,7 @@ impl ECashParams {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Voucher {
     pub binding_number: Scalar,
     pub value: Scalar,
@@ -84,9 +85,12 @@ impl Voucher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bls12_381::G1Projective;
-    use group::{Curve, GroupEncoding};
-    use nymcoconut::{hash_g1, prepare_blind_sign, ttp_keygen, VerificationKey};
+    use bls12_381::{G1Projective, Scalar};
+    use itertools::izip;
+    use nymcoconut::{
+        aggregate_verification_keys, blind_sign, prepare_blind_sign, ttp_keygen, BlindSignRequest,
+        BlindedSignature, VerificationKey,
+    };
 
     #[test]
     fn main() -> Result<(), CoconutError> {
@@ -115,70 +119,57 @@ mod tests {
 
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
 
-        let vouchers_openings = params.coconut_params.n_random_scalars(NUMBER_OF_VOUCHERS);
-        let vouchers_commitments = vouchers
+        let vouchers_commitment_opening = vouchers
             .iter()
-            .zip(vouchers_openings.iter())
-            .map(|(v, o)| v.commit(&params.coconut_params, *o))
-            .collect::<Vec<G1Projective>>();
-
-        let blinded_signatures_requests = vouchers
+            .map(|_| params.coconut_params.random_scalar())
+            .collect::<Vec<Scalar>>();
+        let vouchers_commitments_openings = vouchers
             .iter()
-            .zip(vouchers_openings.iter())
-            .map(|(v, o)| {
-                prepare_blind_sign(
-                    &params.coconut_params,
-                    &v.private_attributes(),
-                    o,
-                    &v.private_attributes(),
-                )
+            .map(|v| {
+                params
+                    .coconut_params
+                    .n_random_scalars(v.private_attributes().len())
             })
-            .collect();
+            .collect::<Vec<Vec<Scalar>>>();
+        let blinded_signatures_shares_requests = izip!(
+            vouchers.iter(),
+            vouchers_commitment_opening.iter(),
+            vouchers_commitments_openings.iter()
+        )
+        .map(|(v, o, os)| {
+            prepare_blind_sign(
+                &params.coconut_params,
+                &v.private_attributes(),
+                &o,
+                &os,
+                &v.public_attributes(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<BlindSignRequest>>();
 
-        // // derive h_m
-        // let vouchers_commitments_bytes = vouchers_commitments
-        //     .iter()
-        //     .map(|c| c.to_affine().to_compressed())
-        //     .flatten()
-        //     .collect::<Vec<u8>>();
-        // let h_m = hash_g1(vouchers_commitments_bytes);
+        let verification_key =
+            aggregate_verification_keys(&verification_keys, Some(&[1, 2, 3, 4, 5]))?;
+        let blinded_signatures_shares = blinded_signatures_shares_requests
+            .iter()
+            .zip(vouchers.iter())
+            .map(|(r, v)| {
+                coconut_keypairs
+                    .iter()
+                    .map(|keypair| {
+                        blind_sign(
+                            &params.coconut_params,
+                            &keypair.secret_key(),
+                            &r,
+                            &v.public_attributes(),
+                        )
+                    })
+                    .collect::<Vec<Result<BlindedSignature, CoconutError>>>()
+            })
+            .collect::<Vec<Vec<Result<BlindedSignature, CoconutError>>>>();
 
-        // // commit to each attribute of each voucher
-        // let vouchers_attributes_openings = vouchers
-        //     .iter()
-        //     .map(|_| {
-        //         params
-        //             .coconut_params
-        //             .n_random_scalars(3)
-        //             .try_into()
-        //             .unwrap()
-        //     })
-        //     .collect::<Vec<[Scalar; 3]>>();
-        // let vouchers_attributes_commitments = vouchers
-        //     .iter()
-        //     .zip(vouchers_attributes_openings.iter())
-        //     .map(|(v, o)| v.commit_attributes(&params.coconut_params, o, h_m))
-        //     .collect::<Vec<Vec<G1Projective>>>();
-
-        // let private_attributes =
-        // let blind_sign_request = prepare_blind_sign(
-        //     &params,
-        //     &private_attributes,
-        //     &commitments_openings,
-        //     &public_attributes,
-        // )?;
-
-        // // generate blinded signatures
-        // let mut blinded_signatures = Vec::new();
-        // for keypair in coconut_keypairs {
-        //     let blinded_signature = blind_sign(
-        //         &params.coconut_params,
-        //         &keypair.secret_key(),
-        //         &blind_sign_request,
-        //         &public_attributes,
-        //     )?;
-        //     blinded_signatures.push(blinded_signature)
-        // }
+        // TODO
+        // let signatures_shares = blinded_signatures_shares.iter().zip(vouchers.iter()).map(|(bss, v)| izip!(bss.iter(), betas_g1.iter(), verification_keys.iter()).map(|(s, b, vk)| bss.unblind(&params.coconut_params, &b, &vk, &v.private_attributes(), &v.private_attributes(), &bss.get_commitment_hash(), &
 
         Ok(())
     }

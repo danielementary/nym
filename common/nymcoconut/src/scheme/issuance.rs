@@ -158,11 +158,10 @@ impl BlindSignRequest {
 
 pub fn compute_private_attributes_commitment(
     params: &Parameters,
+    commitment_opening: &Scalar,
     private_attributes: &[Attribute],
     hs: &[G1Affine],
-) -> (Scalar, G1Projective) {
-    let commitment_opening = params.random_scalar();
-
+) -> G1Projective {
     // Produces h0 ^ m0 * h1^m1 * .... * hn^mn
     // where m0, m1, ...., mn are private attributes
     let attr_cm = private_attributes
@@ -172,8 +171,7 @@ pub fn compute_private_attributes_commitment(
         .sum::<G1Projective>();
 
     // Produces g1^r * h0 ^ m0 * h1^m1 * .... * hn^mn
-    let commitment = params.gen1() * commitment_opening + attr_cm;
-    (commitment_opening, commitment)
+    params.gen1() * commitment_opening + attr_cm
 }
 
 pub fn compute_private_attributes_commitments(
@@ -197,6 +195,7 @@ pub fn compute_commitment_hash(commitment: G1Projective) -> G1Projective {
 pub fn prepare_blind_sign(
     params: &Parameters,
     private_attributes: &[Attribute],
+    commitment_opening: &Scalar,
     commitments_openings: &[Scalar],
     public_attributes: &[Attribute],
 ) -> Result<BlindSignRequest> {
@@ -219,8 +218,8 @@ pub fn prepare_blind_sign(
         });
     }
 
-    let (commitment_opening, commitment) =
-        compute_private_attributes_commitment(params, private_attributes, hs);
+    let commitment =
+        compute_private_attributes_commitment(params, commitment_opening, private_attributes, hs);
 
     // Compute the challenge as the commitment hash
     let commitment_hash = compute_commitment_hash(commitment);
@@ -345,12 +344,14 @@ mod tests {
     fn blind_sign_request_bytes_roundtrip() {
         let mut params = Parameters::new(1).unwrap();
         let private_attributes = params.n_random_scalars(1);
+        let commitment_opening = params.random_scalar();
         let commitments_openings = params.n_random_scalars(1);
         let public_attributes = params.n_random_scalars(0);
 
         let lambda = prepare_blind_sign(
             &mut params,
             &private_attributes,
+            &commitment_opening,
             &commitments_openings,
             &public_attributes,
         )
@@ -365,11 +366,13 @@ mod tests {
 
         let mut params = Parameters::new(4).unwrap();
         let private_attributes = params.n_random_scalars(2);
+        let commitment_opening = params.random_scalar();
         let commitments_openings = params.n_random_scalars(2);
         let public_attributes = params.n_random_scalars(2);
         let lambda = prepare_blind_sign(
             &mut params,
             &private_attributes,
+            &commitment_opening,
             &commitments_openings,
             &public_attributes,
         )

@@ -26,6 +26,7 @@ pub use scheme::BlindedSignature;
 pub use scheme::Signature;
 pub use scheme::SignatureShare;
 pub use traits::Base58;
+pub use utils::hash_g1;
 pub use utils::hash_to_scalar;
 
 use crate::traits::Bytable;

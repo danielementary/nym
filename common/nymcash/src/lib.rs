@@ -55,14 +55,30 @@ impl Voucher {
 
         g1 * opening + hs[0] * self.binding_number + hs[1] * self.value + hs[2] * self.serial_number
     }
+
+    pub fn commit_attributes(
+        &self,
+        coconut_params: &Parameters,
+        openings: &[Scalar; 3],
+        h_m: G1Projective,
+    ) -> Vec<G1Projective> {
+        let mut commitments = Vec::new();
+        let g1 = coconut_params.gen1();
+
+        commitments.push(g1 * openings[0] + h_m * self.binding_number);
+        commitments.push(g1 * openings[1] + h_m * self.value);
+        commitments.push(g1 * openings[2] + h_m * self.serial_number);
+
+        commitments
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use bls12_381::G1Projective;
-    use group::Curve;
-    use nymcoconut::{ttp_keygen, VerificationKey};
+    use group::{Curve, GroupEncoding};
+    use nymcoconut::{hash_g1, ttp_keygen, VerificationKey};
 
     #[test]
     fn main() -> Result<(), CoconutError> {
@@ -104,11 +120,26 @@ mod tests {
         let vouchers_commitments_bytes = vouchers_commitments
             .iter()
             .map(|c| c.to_affine().to_compressed())
-            .collect::<Vec<_>>();
+            .flatten()
+            .collect::<Vec<u8>>();
+        let h_m = hash_g1(vouchers_commitments_bytes);
 
-        let h_m = hash_g1(std::iter::chain(
-            vouchers_commitments_bytes.iter().map(|b| b.as_ref()),
-        ));
+        // commit to each attribute of each voucher
+        let vouchers_attributes_openings = vouchers
+            .iter()
+            .map(|_| {
+                params
+                    .coconut_params
+                    .n_random_scalars(3)
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<[Scalar; 3]>>();
+        let vouchers_attributes_commitments = vouchers
+            .iter()
+            .zip(vouchers_attributes_openings.iter())
+            .map(|(v, o)| v.commit_attributes(&params.coconut_params, o, h_m))
+            .collect::<Vec<Vec<G1Projective>>>();
 
         Ok(())
     }

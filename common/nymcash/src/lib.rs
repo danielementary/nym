@@ -50,29 +50,6 @@ impl Voucher {
             .collect()
     }
 
-    // pub fn commit(&self, coconut_params: &Parameters, opening: Scalar) -> G1Projective {
-    //     let g1 = coconut_params.gen1();
-    //     let hs = coconut_params.gen_hs();
-
-    //     g1 * opening + hs[0] * self.binding_number + hs[1] * self.value + hs[2] * self.serial_number
-    // }
-
-    // pub fn commit_attributes(
-    //     &self,
-    //     coconut_params: &Parameters,
-    //     openings: &[Scalar; 3],
-    //     h_m: G1Projective,
-    // ) -> Vec<G1Projective> {
-    //     let mut commitments = Vec::new();
-    //     let g1 = coconut_params.gen1();
-
-    //     commitments.push(g1 * openings[0] + h_m * self.binding_number);
-    //     commitments.push(g1 * openings[1] + h_m * self.value);
-    //     commitments.push(g1 * openings[2] + h_m * self.serial_number);
-
-    //     commitments
-    // }
-
     pub fn private_attributes(self) -> Vec<Scalar> {
         vec![self.binding_number, self.value, self.serial_number]
     }
@@ -128,6 +105,8 @@ mod tests {
 
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
 
+        // issue signatures for initial vouchers like coconut
+        // generate commitments openings
         let vouchers_commitment_opening = vouchers
             .iter()
             .map(|_| params.coconut_params.random_scalar())
@@ -140,6 +119,8 @@ mod tests {
                     .n_random_scalars(v.private_attributes().len())
             })
             .collect::<Vec<Vec<Scalar>>>();
+
+        // prepare blind signatures
         let blinded_signatures_shares_requests = izip!(
             vouchers.iter(),
             vouchers_commitment_opening.iter(),
@@ -157,6 +138,7 @@ mod tests {
         })
         .collect::<Vec<BlindSignRequest>>();
 
+        // acquire partial signatures
         let verification_key =
             aggregate_verification_keys(&verification_keys, Some(&[1, 2, 3, 4, 5]))?;
         let blinded_signatures_shares = blinded_signatures_shares_requests
@@ -178,6 +160,7 @@ mod tests {
             })
             .collect::<Vec<Vec<BlindedSignature>>>();
 
+        // unblind partial signatures
         let signatures_shares = izip!(
             blinded_signatures_shares.iter(),
             vouchers.iter(),
@@ -204,6 +187,7 @@ mod tests {
         })
         .collect::<Vec<Vec<SignatureShare>>>();
 
+        // aggregate partial signatures
         let signatures = signatures_shares
             .iter()
             .zip(vouchers.iter())

@@ -80,6 +80,15 @@ impl Voucher {
     pub fn public_attributes(self) -> Vec<Scalar> {
         vec![self.info]
     }
+
+    pub fn attributes(self) -> Vec<Scalar> {
+        vec![
+            self.binding_number,
+            self.value,
+            self.serial_number,
+            self.info,
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -88,8 +97,8 @@ mod tests {
     use bls12_381::{G1Projective, Scalar};
     use itertools::izip;
     use nymcoconut::{
-        aggregate_verification_keys, blind_sign, prepare_blind_sign, ttp_keygen, BlindSignRequest,
-        BlindedSignature, VerificationKey,
+        aggregate_signature_shares, aggregate_verification_keys, blind_sign, prepare_blind_sign,
+        ttp_keygen, BlindSignRequest, BlindedSignature, Signature, SignatureShare, VerificationKey,
     };
 
     #[test]
@@ -163,13 +172,51 @@ mod tests {
                             &r,
                             &v.public_attributes(),
                         )
+                        .unwrap()
                     })
-                    .collect::<Vec<Result<BlindedSignature, CoconutError>>>()
+                    .collect::<Vec<BlindedSignature>>()
             })
-            .collect::<Vec<Vec<Result<BlindedSignature, CoconutError>>>>();
+            .collect::<Vec<Vec<BlindedSignature>>>();
 
-        // TODO
-        // let signatures_shares = blinded_signatures_shares.iter().zip(vouchers.iter()).map(|(bss, v)| izip!(bss.iter(), betas_g1.iter(), verification_keys.iter()).map(|(s, b, vk)| bss.unblind(&params.coconut_params, &b, &vk, &v.private_attributes(), &v.private_attributes(), &bss.get_commitment_hash(), &
+        let signatures_shares = izip!(
+            blinded_signatures_shares.iter(),
+            vouchers.iter(),
+            vouchers_commitments_openings.iter(),
+            blinded_signatures_shares_requests.iter()
+        )
+        .map(|(bss, v, vco, bsr)| {
+            izip!(bss.iter(), betas_g1.iter(), verification_keys.iter())
+                .map(|(s, b, vk)| {
+                    s.unblind(
+                        &params.coconut_params,
+                        &b,
+                        &vk,
+                        &v.private_attributes(),
+                        &v.public_attributes(),
+                        &bsr.get_commitment_hash(),
+                        &vco,
+                    )
+                    .unwrap()
+                })
+                .enumerate()
+                .map(|(idx, s)| SignatureShare::new(s, (idx + 1) as u64))
+                .collect::<Vec<SignatureShare>>()
+        })
+        .collect::<Vec<Vec<SignatureShare>>>();
+
+        let signatures = signatures_shares
+            .iter()
+            .zip(vouchers.iter())
+            .map(|(ss, v)| {
+                aggregate_signature_shares(
+                    &params.coconut_params,
+                    &verification_key,
+                    &v.attributes(),
+                    &ss,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<Signature>>();
 
         Ok(())
     }

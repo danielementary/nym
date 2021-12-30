@@ -250,6 +250,17 @@ mod tests {
             })
             .collect::<Vec<Signature>>();
 
+        let vouchers_list = VouchersList::new(
+            vouchers,
+            vouchers_commitment_opening,
+            vouchers_commitments_openings,
+            signatures,
+        );
+
+        let values = vec![Scalar::from(10), Scalar::from(10)];
+
+        let vouchers_list_indices = vouchers_list.find(&values);
+
         Ok(())
     }
 }

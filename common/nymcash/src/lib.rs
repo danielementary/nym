@@ -77,8 +77,25 @@ pub struct VouchersList {
     pub signatures: Vec<Signature>,
 }
 
-// returns the list of indices from a VouchersList for vouchers to be spend for given values
 impl VouchersList {
+    pub fn new(
+        vouchers: Vec<Voucher>,
+        commitment_openings: Vec<Scalar>,
+        commitments_openings: Vec<Vec<Scalar>>,
+        signatures: Vec<Signature>,
+    ) -> VouchersList {
+        let len = vouchers.len();
+
+        VouchersList {
+            vouchers,
+            used: vec![false; len],
+            commitment_openings,
+            commitments_openings,
+            signatures,
+        }
+    }
+
+    // returns the list of indices from a VouchersList for vouchers to be spend for given values
     pub fn find(&self, values: &Vec<Scalar>) -> Option<Vec<usize>> {
         let mut vouchers_indices = Vec::new();
 

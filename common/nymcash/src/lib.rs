@@ -1,5 +1,5 @@
 use bls12_381::Scalar;
-use nymcoconut::{CoconutError, Parameters};
+use nymcoconut::{CoconutError, Parameters, Signature};
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -50,21 +50,52 @@ impl Voucher {
             .collect()
     }
 
-    pub fn private_attributes(self) -> Vec<Scalar> {
+    pub fn private_attributes(&self) -> Vec<Scalar> {
         vec![self.binding_number, self.value, self.serial_number]
     }
 
-    pub fn public_attributes(self) -> Vec<Scalar> {
+    pub fn public_attributes(&self) -> Vec<Scalar> {
         vec![self.info]
     }
 
-    pub fn attributes(self) -> Vec<Scalar> {
+    pub fn attributes(&self) -> Vec<Scalar> {
         vec![
             self.binding_number,
             self.value,
             self.serial_number,
             self.info,
         ]
+    }
+}
+
+// struct that carries all the information concerning a given list of vouchers
+pub struct VouchersList {
+    pub vouchers: Vec<Voucher>,
+    pub used: Vec<bool>,
+    pub commitment_openings: Vec<Scalar>,
+    pub commitments_openings: Vec<Vec<Scalar>>,
+    pub signatures: Vec<Signature>,
+}
+
+// returns the list of indices from a VouchersList for vouchers to be spend for given values
+impl VouchersList {
+    pub fn find(&self, values: &Vec<Scalar>) -> Option<Vec<usize>> {
+        let mut vouchers_indices = Vec::new();
+
+        for val in values {
+            for (i, v) in self.vouchers.iter().enumerate() {
+                if v.value == *val && !self.used[i] && !vouchers_indices.contains(&i) {
+                    vouchers_indices.push(i);
+                    break;
+                }
+            }
+        }
+
+        if vouchers_indices.len() == values.len() {
+            Some(vouchers_indices)
+        } else {
+            None
+        }
     }
 }
 

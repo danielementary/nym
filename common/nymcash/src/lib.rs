@@ -20,3 +20,20 @@ impl ECashParams {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn main() -> Result<(), CoconutError> {
+        // define e-cash parameters
+        let num_attributes = 4;
+        let pay_max = Scalar::from(10);
+        let voucher_max = Scalar::from(10);
+
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max)?;
+
+        Ok(())
+    }
+}

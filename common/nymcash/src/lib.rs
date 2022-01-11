@@ -1,5 +1,5 @@
 use bls12_381::Scalar;
-use nymcoconut::{CoconutError, Parameters, Signature};
+use nymcoconut::{prepare_blind_sign, BlindSignRequest, CoconutError, Parameters, Signature};
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -117,6 +117,19 @@ impl VouchersList {
     }
 }
 
+// returns a tuple with blind signatures requests and corresponding openings
+fn prepare_vouchers_blind_sign(
+    params: &Parameters,
+    vouchers: &[Voucher],
+) -> (Vec<Vec<Scalar>>, Vec<BlindSignRequest>) {
+    vouchers
+        .iter()
+        .map(|v| {
+            prepare_blind_sign(&params, &v.private_attributes(), &v.public_attributes()).unwrap()
+        })
+        .unzip()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,20 +164,8 @@ mod tests {
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
 
         // prepare requests for initial vouchers signatures partial signatures
-        let (blinded_signatures_shares_openings, blinded_signatures_shares_requests): (
-            Vec<Vec<Scalar>>,
-            Vec<BlindSignRequest>,
-        ) = vouchers
-            .iter()
-            .map(|v| {
-                prepare_blind_sign(
-                    &params.coconut_params,
-                    &v.private_attributes(),
-                    &v.public_attributes(),
-                )
-                .unwrap()
-            })
-            .unzip();
+        let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
+            prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
 
         // issue signatures for initial vouchers partial signatures
         let blinded_signatures_shares: Vec<Vec<BlindedSignature>> =

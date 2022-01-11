@@ -1,5 +1,5 @@
 use bls12_381::Scalar;
-use nymcoconut::{CoconutError, Parameters};
+use nymcoconut::{CoconutError, Parameters, Signature};
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -69,6 +69,51 @@ impl Voucher {
 
     pub fn number_of_attributes() -> u32 {
         4
+    }
+}
+
+// struct that carries all the information concerning a given list of vouchers
+pub struct VouchersList {
+    pub vouchers: Vec<Voucher>,
+    pub used: Vec<bool>,
+    pub commitments_openings: Vec<Vec<Scalar>>,
+    pub signatures: Vec<Signature>,
+}
+
+impl VouchersList {
+    pub fn new(
+        vouchers: Vec<Voucher>,
+        commitments_openings: Vec<Vec<Scalar>>,
+        signatures: Vec<Signature>,
+    ) -> VouchersList {
+        let len = vouchers.len();
+
+        VouchersList {
+            vouchers,
+            used: vec![false; len],
+            commitments_openings,
+            signatures,
+        }
+    }
+
+    // returns the list of indices from a VouchersList for vouchers to be spend for given values
+    pub fn find(&self, values: &Vec<Scalar>) -> Option<Vec<usize>> {
+        let mut vouchers_indices = Vec::new();
+
+        for val in values {
+            for (i, v) in self.vouchers.iter().enumerate() {
+                if v.value == *val && !self.used[i] && !vouchers_indices.contains(&i) {
+                    vouchers_indices.push(i);
+                    break;
+                }
+            }
+        }
+
+        if vouchers_indices.len() == values.len() {
+            Some(vouchers_indices)
+        } else {
+            None
+        }
     }
 }
 
@@ -182,6 +227,16 @@ mod tests {
                 .unwrap()
             })
             .collect();
+
+        // bring together vouchers and corresponding signatures
+        let vouchers_list =
+            VouchersList::new(vouchers, blinded_signatures_shares_openings, signatures);
+
+        // values to be spent
+        let values = vec![Scalar::from(10), Scalar::from(10)];
+
+        // find indices of vouchers that can be used
+        let vouchers_list_indices = vouchers_list.find(&values);
 
         Ok(())
     }

@@ -75,6 +75,11 @@ impl Voucher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::izip;
+    use nymcoconut::{
+        aggregate_signature_shares, aggregate_verification_keys, blind_sign, prepare_blind_sign,
+        ttp_keygen, BlindSignRequest, BlindedSignature, Signature, SignatureShare, VerificationKey,
+    };
 
     #[test]
     fn main() -> Result<(), CoconutError> {
@@ -84,6 +89,99 @@ mod tests {
         let voucher_max = Scalar::from(10);
 
         let params = ECashParams::new(num_attributes, pay_max, voucher_max)?;
+
+        // generate authorities keypairs
+        let authorities_keypairs = ttp_keygen(&params.coconut_params, 2, 3)?;
+        let authorities_verification_keys: Vec<VerificationKey> = authorities_keypairs
+            .iter()
+            .map(|keypair| keypair.verification_key())
+            .collect();
+        let authorities_verification_key =
+            aggregate_verification_keys(&authorities_verification_keys, Some(&[1, 2, 3])).unwrap();
+
+        // create initial vouchers
+        let binding_number = params.coconut_params.random_scalar();
+        let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
+
+        let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
+
+        // prepare requests for initial vouchers signatures partial signatures
+        let (blinded_signatures_shares_openings, blinded_signatures_shares_requests): (
+            Vec<Vec<Scalar>>,
+            Vec<BlindSignRequest>,
+        ) = vouchers
+            .iter()
+            .map(|v| {
+                prepare_blind_sign(
+                    &params.coconut_params,
+                    &v.private_attributes(),
+                    &v.public_attributes(),
+                )
+                .unwrap()
+            })
+            .unzip();
+
+        // issue signatures for initial vouchers partial signatures
+        let blinded_signatures_shares: Vec<Vec<BlindedSignature>> =
+            blinded_signatures_shares_requests
+                .iter()
+                .zip(vouchers.iter())
+                .map(|(r, v)| {
+                    authorities_keypairs
+                        .iter()
+                        .map(|kp| {
+                            blind_sign(
+                                &params.coconut_params,
+                                &kp.secret_key(),
+                                &r,
+                                &v.public_attributes(),
+                            )
+                            .unwrap()
+                        })
+                        .collect::<Vec<BlindedSignature>>()
+                })
+                .collect();
+
+        // unblind partial signatures
+        let signatures_shares: Vec<Vec<SignatureShare>> = izip!(
+            blinded_signatures_shares.iter(),
+            vouchers.iter(),
+            blinded_signatures_shares_openings.iter(),
+            blinded_signatures_shares_requests.iter()
+        )
+        .map(|(bss, v, bss_openings, bss_request)| {
+            izip!(bss.iter(), authorities_verification_keys.iter())
+                .map(|(s, vk)| {
+                    s.unblind(
+                        &params.coconut_params,
+                        &vk,
+                        &v.private_attributes(),
+                        &v.public_attributes(),
+                        &bss_request.get_commitment_hash(),
+                        &bss_openings,
+                    )
+                    .unwrap()
+                })
+                .enumerate()
+                .map(|(idx, s)| SignatureShare::new(s, (idx + 1) as u64))
+                .collect::<Vec<SignatureShare>>()
+        })
+        .collect();
+
+        // aggregate partial signatures
+        let signatures: Vec<Signature> = signatures_shares
+            .iter()
+            .zip(vouchers.iter())
+            .map(|(ss, v)| {
+                aggregate_signature_shares(
+                    &params.coconut_params,
+                    &authorities_verification_key,
+                    &v.attributes(),
+                    &ss,
+                )
+                .unwrap()
+            })
+            .collect();
 
         Ok(())
     }

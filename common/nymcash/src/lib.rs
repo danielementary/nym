@@ -1,5 +1,8 @@
 use bls12_381::Scalar;
-use nymcoconut::{prepare_blind_sign, BlindSignRequest, CoconutError, Parameters, Signature};
+use nymcoconut::{
+    blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature, CoconutError, KeyPair,
+    Parameters, Signature,
+};
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -130,13 +133,32 @@ fn prepare_vouchers_blind_sign(
         .unzip()
 }
 
+// returns the list of blinded signatures shares
+fn vouchers_blind_sign(
+    params: &Parameters,
+    blinded_signatures_shares_requests: &[BlindSignRequest],
+    public_attributes: &[Vec<Scalar>],
+    authorities_keypairs: &[KeyPair],
+) -> Vec<Vec<BlindedSignature>> {
+    blinded_signatures_shares_requests
+        .iter()
+        .zip(public_attributes.iter())
+        .map(|(r, pa)| {
+            authorities_keypairs
+                .iter()
+                .map(|kp| blind_sign(&params, &kp.secret_key(), &r, &pa).unwrap())
+                .collect::<Vec<BlindedSignature>>()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use itertools::izip;
     use nymcoconut::{
-        aggregate_signature_shares, aggregate_verification_keys, blind_sign, prepare_blind_sign,
-        ttp_keygen, BlindSignRequest, BlindedSignature, Signature, SignatureShare, VerificationKey,
+        aggregate_signature_shares, aggregate_verification_keys, ttp_keygen, Signature,
+        SignatureShare, VerificationKey,
     };
 
     #[test]
@@ -162,31 +184,20 @@ mod tests {
         let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
 
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
+        let vouchers_public_attributes: Vec<Vec<Scalar>> =
+            vouchers.iter().map(|v| v.public_attributes()).collect();
 
         // prepare requests for initial vouchers signatures partial signatures
         let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
             prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
 
         // issue signatures for initial vouchers partial signatures
-        let blinded_signatures_shares: Vec<Vec<BlindedSignature>> =
-            blinded_signatures_shares_requests
-                .iter()
-                .zip(vouchers.iter())
-                .map(|(r, v)| {
-                    authorities_keypairs
-                        .iter()
-                        .map(|kp| {
-                            blind_sign(
-                                &params.coconut_params,
-                                &kp.secret_key(),
-                                &r,
-                                &v.public_attributes(),
-                            )
-                            .unwrap()
-                        })
-                        .collect::<Vec<BlindedSignature>>()
-                })
-                .collect();
+        let blinded_signatures_shares = vouchers_blind_sign(
+            &params.coconut_params,
+            &blinded_signatures_shares_requests,
+            &vouchers_public_attributes,
+            &authorities_keypairs,
+        );
 
         // unblind partial signatures
         let signatures_shares: Vec<Vec<SignatureShare>> = izip!(

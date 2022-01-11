@@ -1,7 +1,8 @@
 use bls12_381::Scalar;
+use itertools::izip;
 use nymcoconut::{
     blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature, CoconutError, KeyPair,
-    Parameters, Signature,
+    Parameters, Signature, SignatureShare, VerificationKey,
 };
 
 pub struct ECashParams {
@@ -152,13 +153,46 @@ fn vouchers_blind_sign(
         .collect()
 }
 
+// return the list of unblinded signature shares
+fn unblind_vouchers_signatures_shares(
+    params: &Parameters,
+    blinded_signatures_shares: &[Vec<BlindedSignature>],
+    vouchers: &[Voucher],
+    blinded_signatures_shares_openings: &[Vec<Scalar>],
+    blinded_signatures_shares_requests: &[BlindSignRequest],
+    authorities_verification_keys: &[VerificationKey],
+) -> Vec<Vec<SignatureShare>> {
+    izip!(
+        blinded_signatures_shares.iter(),
+        vouchers.iter(),
+        blinded_signatures_shares_openings.iter(),
+        blinded_signatures_shares_requests.iter()
+    )
+    .map(|(bss, v, bss_openings, bss_request)| {
+        izip!(bss.iter(), authorities_verification_keys.iter())
+            .map(|(s, vk)| {
+                s.unblind(
+                    &params,
+                    &vk,
+                    &v.private_attributes(),
+                    &v.public_attributes(),
+                    &bss_request.get_commitment_hash(),
+                    &bss_openings,
+                )
+                .unwrap()
+            })
+            .enumerate()
+            .map(|(idx, s)| SignatureShare::new(s, (idx + 1) as u64))
+            .collect::<Vec<SignatureShare>>()
+    })
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itertools::izip;
     use nymcoconut::{
         aggregate_signature_shares, aggregate_verification_keys, ttp_keygen, Signature,
-        SignatureShare, VerificationKey,
     };
 
     #[test]
@@ -200,30 +234,14 @@ mod tests {
         );
 
         // unblind partial signatures
-        let signatures_shares: Vec<Vec<SignatureShare>> = izip!(
-            blinded_signatures_shares.iter(),
-            vouchers.iter(),
-            blinded_signatures_shares_openings.iter(),
-            blinded_signatures_shares_requests.iter()
-        )
-        .map(|(bss, v, bss_openings, bss_request)| {
-            izip!(bss.iter(), authorities_verification_keys.iter())
-                .map(|(s, vk)| {
-                    s.unblind(
-                        &params.coconut_params,
-                        &vk,
-                        &v.private_attributes(),
-                        &v.public_attributes(),
-                        &bss_request.get_commitment_hash(),
-                        &bss_openings,
-                    )
-                    .unwrap()
-                })
-                .enumerate()
-                .map(|(idx, s)| SignatureShare::new(s, (idx + 1) as u64))
-                .collect::<Vec<SignatureShare>>()
-        })
-        .collect();
+        let signatures_shares = unblind_vouchers_signatures_shares(
+            &params.coconut_params,
+            &blinded_signatures_shares,
+            &vouchers,
+            &blinded_signatures_shares_openings,
+            &blinded_signatures_shares_requests,
+            &authorities_verification_keys,
+        );
 
         // aggregate partial signatures
         let signatures: Vec<Signature> = signatures_shares

@@ -1,8 +1,8 @@
 use bls12_381::Scalar;
 use itertools::izip;
 use nymcoconut::{
-    blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature, CoconutError, KeyPair,
-    Parameters, Signature, SignatureShare, VerificationKey,
+    aggregate_signature_shares, blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature,
+    CoconutError, KeyPair, Parameters, Signature, SignatureShare, VerificationKey,
 };
 
 pub struct ECashParams {
@@ -188,12 +188,25 @@ fn unblind_vouchers_signatures_shares(
     .collect()
 }
 
+// return vouchers signatures
+fn aggregate_vouchers_signatures_shares(
+    params: &Parameters,
+    signatures_shares: &[Vec<SignatureShare>],
+    vouchers: &[Voucher],
+    authorities_verification_key: &VerificationKey,
+) -> Vec<Signature> {
+    izip!(signatures_shares.iter(), vouchers.iter())
+        .map(|(ss, v)| {
+            aggregate_signature_shares(&params, &authorities_verification_key, &v.attributes(), &ss)
+                .unwrap()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nymcoconut::{
-        aggregate_signature_shares, aggregate_verification_keys, ttp_keygen, Signature,
-    };
+    use nymcoconut::{aggregate_verification_keys, ttp_keygen};
 
     #[test]
     fn main() -> Result<(), CoconutError> {
@@ -244,19 +257,12 @@ mod tests {
         );
 
         // aggregate partial signatures
-        let signatures: Vec<Signature> = signatures_shares
-            .iter()
-            .zip(vouchers.iter())
-            .map(|(ss, v)| {
-                aggregate_signature_shares(
-                    &params.coconut_params,
-                    &authorities_verification_key,
-                    &v.attributes(),
-                    &ss,
-                )
-                .unwrap()
-            })
-            .collect();
+        let signatures = aggregate_vouchers_signatures_shares(
+            &params.coconut_params,
+            &signatures_shares,
+            &vouchers,
+            &authorities_verification_key,
+        );
 
         // bring together vouchers and corresponding signatures
         let vouchers_list =

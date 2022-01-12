@@ -1,12 +1,11 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
-use core::ops::Neg;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
-use bls12_381::{multi_miller_loop, G1Affine, G2Prepared, G2Projective, Scalar};
-use group::{Curve, Group};
+use bls12_381::{G2Prepared, G2Projective, Scalar};
+use group::Curve;
 
 use crate::error::{CoconutError, Result};
 use crate::proofs::ProofKappaZeta;
@@ -183,25 +182,6 @@ impl Bytable for ThetaSpend {
 
 impl Base58 for ThetaSpend {}
 
-pub fn compute_kappa(
-    params: &Parameters,
-    verification_key: &VerificationKey,
-    private_attributes: &[Attribute],
-    blinding_factor: Scalar,
-) -> G2Projective {
-    params.gen2() * blinding_factor
-        + verification_key.alpha
-        + private_attributes
-            .iter()
-            .zip(verification_key.beta_g2.iter())
-            .map(|(priv_attr, beta_i)| beta_i * priv_attr)
-            .sum::<G2Projective>()
-}
-
-pub fn compute_zeta(params: &Parameters, serial_number: Attribute) -> G2Projective {
-    params.gen2() * serial_number
-}
-
 pub fn prove_bandwidth_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
@@ -256,18 +236,6 @@ pub fn prove_bandwidth_credential(
     })
 }
 
-/// Checks whether e(P, Q) * e(-R, S) == id
-pub fn check_bilinear_pairing(p: &G1Affine, q: &G2Prepared, r: &G1Affine, s: &G2Prepared) -> bool {
-    // checking e(P, Q) * e(-R, S) == id
-    // is equivalent to checking e(P, Q) == e(R, S)
-    // but requires only a single final exponentiation rather than two of them
-    // and therefore, as seen via benchmarks.rs, is almost 50% faster
-    // (1.47ms vs 2.45ms, tested on R9 5900X)
-
-    let multi_miller = multi_miller_loop(&[(p, q), (&r.neg(), s)]);
-    multi_miller.final_exponentiation().is_identity().into()
-}
-
 pub fn verify_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
@@ -307,30 +275,6 @@ pub fn verify_credential(
         &(theta.credential.1).to_affine(),
         params.prepared_miller_g2(),
     ) && !bool::from(theta.credential.0.is_identity())
-}
-
-// Used in tests only
-#[cfg(test)]
-pub fn verify(
-    params: &Parameters,
-    verification_key: &VerificationKey,
-    public_attributes: &[Attribute],
-    sig: &Signature,
-) -> bool {
-    let kappa = (verification_key.alpha
-        + public_attributes
-            .iter()
-            .zip(verification_key.beta_g2.iter())
-            .map(|(m_i, b_i)| b_i * m_i)
-            .sum::<G2Projective>())
-    .to_affine();
-
-    check_bilinear_pairing(
-        &sig.0.to_affine(),
-        &G2Prepared::from(kappa),
-        &sig.1.to_affine(),
-        params.prepared_miller_g2(),
-    ) && !bool::from(sig.0.is_identity())
 }
 
 #[cfg(test)]

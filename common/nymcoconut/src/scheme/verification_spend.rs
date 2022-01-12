@@ -127,18 +127,43 @@ impl ThetaSpend {
         )
     }
 
-    // blinded message (kappa)  || blinded serial number (zeta) || credential || pi_v
+    // number of vouchers spent || blinded messages (kappa) || blinded serial numbers (zeta) || vouchers signatures || total amount || pi_v
     pub fn to_bytes(&self) -> Vec<u8> {
-        let blinded_message_bytes = self.blinded_message.to_affine().to_compressed();
-        let blinded_serial_number_bytes = self.blinded_serial_number.to_affine().to_compressed();
-        let credential_bytes = self.credential.to_bytes();
-        let proof_bytes = self.pi_v.to_bytes();
+        let mut bytes = Vec::with_capacity(
+            4 + self.number_of_vouchers_spent * (96 + 96 + 96 + 32) + proof_bytes.len(),
+        );
 
-        let mut bytes = Vec::with_capacity(288 + proof_bytes.len());
-        bytes.extend_from_slice(&blinded_message_bytes);
-        bytes.extend_from_slice(&blinded_serial_number_bytes);
-        bytes.extend_from_slice(&credential_bytes);
-        bytes.extend_from_slice(&proof_bytes);
+        let number_of_vouchers_spent_bytes = self.number_of_vouchers_spent.to_be_bytes();
+        let blinded_message_bytes = self
+            .blinded_messages
+            .iter()
+            .map(|m| m.to_affine().to_compressed())
+            .collect();
+        let blinded_serial_number_bytes = self
+            .blinded_serial_numbers
+            .iter()
+            .map(|sn| sn.to_affine().to_compressed())
+            .collect();
+        let vouchers_signatures_bytes = self
+            .vouchers_signatures
+            .iter()
+            .map(|s| s.to_bytes())
+            .collect();
+        let total_amount_bytes = self.total_amount.to_bytes();
+        let pi_v_bytes = self.pi_v.to_bytes();
+
+        bytes.extend(number_of_vouchers_spent_bytes);
+        for b in blinded_message_bytes {
+            bytes.extend(&b);
+        }
+        for b in blinded_serial_number_bytes {
+            bytes.extend(&b);
+        }
+        for b in vouchers_signatures_bytes {
+            bytes.extend(&b);
+        }
+        bytes.extend(total_amount_bytes);
+        bytes.extend(pi_v_bytes);
 
         bytes
     }

@@ -101,7 +101,7 @@ impl VouchersList {
     }
 
     // returns the list of indices from a VouchersList for vouchers to be spend for given values
-    pub fn find(&self, values: &Vec<Scalar>) -> Option<Vec<usize>> {
+    pub fn find(&self, values: &[Scalar]) -> Option<Vec<usize>> {
         let mut vouchers_indices = Vec::new();
 
         for val in values {
@@ -119,6 +119,8 @@ impl VouchersList {
             None
         }
     }
+
+    // pub fn spend(&self, values: &[Scalar]) -> _ {}
 }
 
 // returns a tuple with blind signatures requests and corresponding openings

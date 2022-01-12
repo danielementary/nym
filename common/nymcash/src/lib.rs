@@ -85,17 +85,12 @@ pub struct VouchersList {
 }
 
 impl VouchersList {
-    pub fn new(
-        vouchers: Vec<Voucher>,
-        commitments_openings: Vec<Vec<Scalar>>,
-        signatures: Vec<Signature>,
-    ) -> VouchersList {
+    pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> VouchersList {
         let len = vouchers.len();
 
         VouchersList {
             vouchers,
             used: vec![false; len],
-            commitments_openings,
             signatures,
         }
     }
@@ -267,8 +262,7 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let vouchers_list =
-            VouchersList::new(vouchers, blinded_signatures_shares_openings, signatures);
+        let vouchers_list = VouchersList::new(vouchers, signatures);
 
         // values to be spent
         let values = vec![Scalar::from(10), Scalar::from(10)];

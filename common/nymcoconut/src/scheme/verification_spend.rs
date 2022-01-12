@@ -122,46 +122,44 @@ impl ThetaSpend {
         self.pi_v.verify(
             params,
             verification_key,
-            &self.blinded_message,
-            &self.blinded_serial_number,
+            &self.blinded_messages,
+            &self.blinded_serial_numbers,
+            &self.total_amount,
         )
     }
 
     // number of vouchers spent || blinded messages (kappa) || blinded serial numbers (zeta) || vouchers signatures || total amount || pi_v
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(
-            4 + self.number_of_vouchers_spent * (96 + 96 + 96 + 32) + proof_bytes.len(),
-        );
-
         let number_of_vouchers_spent_bytes = self.number_of_vouchers_spent.to_be_bytes();
         let blinded_message_bytes = self
             .blinded_messages
             .iter()
             .map(|m| m.to_affine().to_compressed())
-            .collect();
+            .flatten()
+            .collect::<Vec<u8>>();
         let blinded_serial_number_bytes = self
             .blinded_serial_numbers
             .iter()
             .map(|sn| sn.to_affine().to_compressed())
-            .collect();
+            .flatten()
+            .collect::<Vec<u8>>();
         let vouchers_signatures_bytes = self
             .vouchers_signatures
             .iter()
             .map(|s| s.to_bytes())
-            .collect();
+            .flatten()
+            .collect::<Vec<u8>>();
         let total_amount_bytes = self.total_amount.to_bytes();
         let pi_v_bytes = self.pi_v.to_bytes();
 
+        let mut bytes = Vec::with_capacity(
+            4 + self.number_of_vouchers_spent as usize * (96 + 96 + 96 + 32) + pi_v_bytes.len(),
+        );
+
         bytes.extend(number_of_vouchers_spent_bytes);
-        for b in blinded_message_bytes {
-            bytes.extend(&b);
-        }
-        for b in blinded_serial_number_bytes {
-            bytes.extend(&b);
-        }
-        for b in vouchers_signatures_bytes {
-            bytes.extend(&b);
-        }
+        bytes.extend(blinded_message_bytes);
+        bytes.extend(blinded_serial_number_bytes);
+        bytes.extend(total_amount_bytes);
         bytes.extend(total_amount_bytes);
         bytes.extend(pi_v_bytes);
 

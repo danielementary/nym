@@ -8,10 +8,11 @@ use bls12_381::{G2Prepared, G2Projective, Scalar};
 use group::Curve;
 
 use crate::error::{CoconutError, Result};
-use crate::proofs::ProofKappaZeta;
+use crate::proofs::ProofSpend;
+use crate::scheme::check_bilinear_pairing;
 use crate::scheme::setup::Parameters;
-use crate::scheme::Signature;
-use crate::scheme::VerificationKey;
+use crate::scheme::verification::{compute_kappa, compute_zeta};
+use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
 use crate::utils::{try_deserialize_g2_projective, try_deserialize_scalar};
 use crate::Attribute;
@@ -31,7 +32,7 @@ pub struct ThetaSpend {
     // total amount spent
     pub total_amount: Scalar,
     // pi_v
-    pub pi_v: ProofKappaZeta,
+    pub pi_v: ProofSpend,
 }
 
 impl TryFrom<&[u8]> for ThetaSpend {
@@ -103,7 +104,7 @@ impl TryFrom<&[u8]> for ThetaSpend {
         )?;
 
         p = p_prime;
-        let pi_v = ProofKappaZeta::from_bytes(&bytes[p..])?;
+        let pi_v = ProofSpend::from_bytes(&bytes[p..])?;
 
         Ok(ThetaSpend {
             number_of_vouchers_spent,
@@ -218,7 +219,7 @@ pub fn prove_bandwidth_credential(
     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
     let blinded_serial_number = compute_zeta(params, serial_number);
 
-    let pi_v = ProofKappaZeta::construct(
+    let pi_v = ProofSpend::construct(
         params,
         verification_key,
         &serial_number,

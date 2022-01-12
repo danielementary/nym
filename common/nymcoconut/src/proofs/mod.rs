@@ -496,6 +496,183 @@ impl ProofKappaZeta {
     }
 }
 
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct ProofSpend {
+    // c
+    challenge: Scalar,
+    // responses
+    response_binding_number: Scalar,
+    responses_values: Vec<Scalar>,
+    responses_serial_numbers: Vec<Scalar>,
+    responses_blinders: Vec<Scalar>,
+}
+
+impl ProofSpend {
+    pub(crate) fn construct(
+        params: &Parameters,
+        verification_key: &VerificationKey,
+        serial_number: &Attribute,
+        binding_number: &Attribute,
+        blinding_factor: &Scalar,
+        blinded_message: &G2Projective,
+        blinded_serial_number: &G2Projective,
+    ) -> Self {
+        // create the witnesses
+        let witness_blinder = params.random_scalar();
+        let witness_serial_number = params.random_scalar();
+        let witness_binding_number = params.random_scalar();
+        let witness_attributes = vec![witness_serial_number, witness_binding_number];
+
+        let beta_bytes = verification_key
+            .beta_g2
+            .iter()
+            .map(|beta_i| beta_i.to_bytes())
+            .collect::<Vec<_>>();
+
+        // witnesses commitments
+        // Aw = g2 * wt + alpha + beta[0] * wm[0] + ... + beta[i] * wm[i]
+        let commitment_kappa = params.gen2() * witness_blinder
+            + verification_key.alpha
+            + witness_attributes
+                .iter()
+                .zip(verification_key.beta_g2.iter())
+                .map(|(wm_i, beta_i)| beta_i * wm_i)
+                .sum::<G2Projective>();
+
+        // zeta is the public value associated with the serial number
+        let commitment_zeta = params.gen2() * witness_serial_number;
+
+        let challenge = compute_challenge::<ChallengeDigest, _, _>(
+            std::iter::once(params.gen2().to_bytes().as_ref())
+                .chain(std::iter::once(blinded_message.to_bytes().as_ref()))
+                .chain(std::iter::once(blinded_serial_number.to_bytes().as_ref()))
+                .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
+                .chain(beta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
+                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+        );
+
+        // responses
+        let response_blinder = produce_response(&witness_blinder, &challenge, blinding_factor);
+        let response_serial_number =
+            produce_response(&witness_serial_number, &challenge, serial_number);
+        let response_binding_number =
+            produce_response(&witness_binding_number, &challenge, binding_number);
+
+        ProofSpend {
+            challenge,
+            response_serial_number,
+            response_binding_number,
+            response_blinder,
+        }
+    }
+
+    pub(crate) fn private_attributes_len(&self) -> usize {
+        2
+    }
+
+    pub(crate) fn verify(
+        &self,
+        params: &Parameters,
+        verification_key: &VerificationKey,
+        kappa: &G2Projective,
+        zeta: &G2Projective,
+    ) -> bool {
+        let beta_bytes = verification_key
+            .beta_g2
+            .iter()
+            .map(|beta_i| beta_i.to_bytes())
+            .collect::<Vec<_>>();
+
+        let response_attributes = vec![self.response_serial_number, self.response_binding_number];
+        // re-compute witnesses commitments
+        // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])
+        let commitment_kappa = kappa * self.challenge
+            + params.gen2() * self.response_blinder
+            + verification_key.alpha * (Scalar::one() - self.challenge)
+            + response_attributes
+                .iter()
+                .zip(verification_key.beta_g2.iter())
+                .map(|(priv_attr, beta_i)| beta_i * priv_attr)
+                .sum::<G2Projective>();
+
+        // zeta is the public value associated with the serial number
+        let commitment_zeta = zeta * self.challenge + params.gen2() * self.response_serial_number;
+
+        // compute the challenge
+        let challenge = compute_challenge::<ChallengeDigest, _, _>(
+            std::iter::once(params.gen2().to_bytes().as_ref())
+                .chain(std::iter::once(kappa.to_bytes().as_ref()))
+                .chain(std::iter::once(zeta.to_bytes().as_ref()))
+                .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
+                .chain(beta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
+                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+        );
+
+        challenge == self.challenge
+    }
+
+    // challenge || response serial number || response binding number || repose blinder
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let attributes_len = 2; // because we have serial number and the binding number
+        let mut bytes = Vec::with_capacity((1 + attributes_len + 1) as usize * 32);
+
+        bytes.extend_from_slice(&self.challenge.to_bytes());
+        bytes.extend_from_slice(&self.response_serial_number.to_bytes());
+        bytes.extend_from_slice(&self.response_binding_number.to_bytes());
+
+        bytes.extend_from_slice(&self.response_blinder.to_bytes());
+
+        bytes
+    }
+
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        // at the very minimum there must be a single attribute being proven
+        if bytes.len() < 32 * 4 || (bytes.len()) % 32 != 0 {
+            return Err(CoconutError::DeserializationInvalidLength {
+                actual: bytes.len(),
+                modulus_target: bytes.len(),
+                modulus: 32,
+                object: "kappa and zeta".to_string(),
+                target: 32 * 4,
+            });
+        }
+
+        let challenge_bytes = bytes[..32].try_into().unwrap();
+        let challenge = try_deserialize_scalar(
+            &challenge_bytes,
+            CoconutError::Deserialization("Failed to deserialize challenge".to_string()),
+        )?;
+
+        let serial_number_bytes = &bytes[32..64].try_into().unwrap();
+        let response_serial_number = try_deserialize_scalar(
+            serial_number_bytes,
+            CoconutError::Deserialization("failed to deserialize the serial number".to_string()),
+        )?;
+
+        let binding_number_bytes = &bytes[64..96].try_into().unwrap();
+        let response_binding_number = try_deserialize_scalar(
+            binding_number_bytes,
+            CoconutError::Deserialization("failed to deserialize the binding number".to_string()),
+        )?;
+
+        let blinder_bytes = bytes[96..].try_into().unwrap();
+        let response_blinder = try_deserialize_scalar(
+            &blinder_bytes,
+            CoconutError::Deserialization("failed to deserialize the blinder".to_string()),
+        )?;
+
+        Ok(ProofSpend {
+            challenge,
+            response_serial_number,
+            response_binding_number,
+            response_blinder,
+        })
+    }
+}
+
 // proof builder:
 // - commitment
 // - challenge

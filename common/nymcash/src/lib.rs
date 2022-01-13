@@ -108,7 +108,7 @@ impl VouchersList {
     }
 
     // returns a list of references to signed vouchers to be spend for given values
-    fn find(&self, values: &[Scalar]) -> Result<Vec<&mut SignedVoucher>, Error> {
+    pub fn find(&self, values: &[Scalar]) -> Result<Vec<&mut SignedVoucher>, Error> {
         let mut signed_vouchers = Vec::new();
 
         for val in values {
@@ -210,6 +210,15 @@ fn aggregate_vouchers_signatures_shares(
         .collect()
 }
 
+fn prepare_vouchers_to_be_spent(
+    params: &Parameters,
+    authorities_verification_key: &VerificationKey,
+    vouchers_to_be_spent: &[&mut SignedVoucher],
+) -> Result<ThetaSpend, Error> {
+    //TODO
+    Err(Error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,7 +287,13 @@ mod tests {
         let values = vec![Scalar::from(10), Scalar::from(10)];
 
         // find indices of vouchers that can be used
-        let vouchers_to_be_spent = vouchers_list.find(&values);
+        let vouchers_to_be_spent = vouchers_list.find(&values).unwrap();
+
+        let theta = prepare_vouchers_to_be_spent(
+            &params.coconut_params,
+            &authorities_verification_key,
+            &mut vouchers_to_be_spent,
+        );
 
         Ok(())
     }

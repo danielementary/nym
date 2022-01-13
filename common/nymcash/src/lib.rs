@@ -84,48 +84,47 @@ pub struct SignedVoucher {
     pub used: bool,
 }
 
+impl SignedVoucher {
+    pub fn set_spent(&mut self) {
+        self.used = true;
+    }
+}
+
 pub struct SignedVouchersList {
-    pub signedVouchers: Vec<SignedVoucher>,
+    pub signed_vouchers: Vec<SignedVoucher>,
 }
 
 impl VouchersList {
     pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> VouchersList {
-        let signedVouchers = izip!(vouchers.iter(), signatures.iter()).map(|(v, s)| SignedVoucher { voucher: v, signature: s, used: false }).collect();
+        let signed_vouchers = izip!(vouchers.iter(), signatures.iter())
+            .map(|(v, s)| SignedVoucher {
+                voucher: v,
+                signature: s,
+                used: false,
+            })
+            .collect();
 
-        SignedVouchersList { signedVouchers }
+        SignedVouchersList { signed_vouchers }
     }
 
-    // returns the list of indices from a VouchersList for vouchers to be spend for given values
-    fn find(&self, values: &[Scalar]) -> Result<Vec<&SignedVoucher>, Error> {
-        let mut vouchers_indices = Vec::new();
+    // returns a list of references to signed vouchers to be spend for given values
+    fn find(&self, values: &[Scalar]) -> Result<Vec<&mut SignedVoucher>, Error> {
+        let mut signed_vouchers = Vec::new();
 
         for val in values {
-            for (i, v) in self.vouchers.iter().enumerate() {
-                if v.value == *val && !self.used[i] && !vouchers_indices.contains(&i) {
-                    vouchers_indices.push(i);
+            for sv in self.signed_vouchers.iter() {
+                if sv.voucher.value == *val && !sv.voucher.used && !signed_vouchers.contains(&sv) {
+                    vouchers_indices.push(sv);
                     break;
                 }
             }
         }
 
-        if vouchers_indices.len() == values.len() {
-            Some(vouchers_indices)
+        if signed_vouchers.len() == values.len() {
+            Ok(signed_vouchers)
         } else {
-            None
-        }
-    }
-
-    pub fn prepare_vouchers_to_spend(&self, values) -> Result<(Vec<&Voucher>, Vec<&Signature>), Error> {
-        let mut vouchers = Vec::new();
-        let mut signatures = Vec::new();
-
-        let indices = self.find(values);
-        if indices.is_none() {
             Err(Error)
         }
-
-        //TODO
-        Ok((vouchers, signatures))
     }
 }
 
@@ -161,7 +160,7 @@ fn vouchers_blind_sign(
         .collect()
 }
 
-// return the list of unblinded signature shares
+// return the list of unblinded signatures shares
 fn unblind_vouchers_signatures_shares(
     params: &Parameters,
     blinded_signatures_shares: &[Vec<BlindedSignature>],
@@ -273,13 +272,13 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let vouchers_list = VouchersList::new(vouchers, signatures);
+        let signed_vouchers_list = SignedVouchersList::new(vouchers, signatures);
 
         // values to be spent
         let values = vec![Scalar::from(10), Scalar::from(10)];
 
         // find indices of vouchers that can be used
-        let vouchers_list_indices = vouchers_list.find(&values);
+        let vouchers_to_be_spent = vouchers_list.find(&values);
 
         Ok(())
     }

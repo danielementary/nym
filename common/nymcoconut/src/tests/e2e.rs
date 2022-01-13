@@ -1,6 +1,6 @@
 use crate::{
     aggregate_signature_shares, aggregate_verification_keys, blind_sign, prepare_blind_sign,
-    prove_bandwidth_credential, setup, ttp_keygen, verify_credential, CoconutError, Signature,
+    prove_credential, setup, ttp_keygen, verify_credential, CoconutError, Signature,
     SignatureShare, VerificationKey,
 };
 
@@ -8,12 +8,10 @@ use itertools::izip;
 
 #[test]
 fn main() -> Result<(), CoconutError> {
-    let params = setup(5)?;
+    let params = setup(4)?;
 
     let public_attributes = params.n_random_scalars(2);
-    let serial_number = params.random_scalar();
-    let binding_number = params.random_scalar();
-    let private_attributes = vec![serial_number, binding_number];
+    let private_attributes = params.n_random_scalars(2);;
 
     // generate commitment and encryption
     let (commitments_openings, blind_sign_request) =
@@ -75,12 +73,11 @@ fn main() -> Result<(), CoconutError> {
         aggregate_signature_shares(&params, &verification_key, &attributes, &signature_shares)?;
 
     // Generate cryptographic material to verify them
-    let theta = prove_bandwidth_credential(
+    let theta = prove_credential(
         &params,
         &verification_key,
         &signature,
-        serial_number,
-        binding_number,
+        &private_attributes,
     )?;
 
     // Verify credentials

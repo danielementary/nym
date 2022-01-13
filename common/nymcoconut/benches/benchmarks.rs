@@ -4,7 +4,7 @@
 use bls12_381::{multi_miller_loop, G1Affine, G2Affine, G2Prepared, Scalar, G1Projective};
 use nymcoconut::{
     aggregate_signature_shares, aggregate_verification_keys, blind_sign, elgamal_keygen,
-    prepare_blind_sign, prove_bandwidth_credential, setup, ttp_keygen, verify_credential, Attribute,
+    prepare_blind_sign, prove_credential, setup, ttp_keygen, verify_credential, Attribute,
     BlindedSignature, Parameters, Signature, SignatureShare, VerificationKey,
 };
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -261,7 +261,7 @@ fn bench_coconut(c: &mut Criterion) {
     );
 
     // CLIENT OPERATION: Randomize credentials and generate any cryptographic material to verify them
-    let theta = prove_bandwidth_credential(
+    let theta = prove_credential(
         &params,
         &aggr_verification_key,
         &aggregated_signature,
@@ -280,7 +280,7 @@ fn bench_coconut(c: &mut Criterion) {
         ),
         |b| {
             b.iter(|| {
-                prove_bandwidth_credential(
+                prove_credential(
                     &params,
                     &aggr_verification_key,
                     &aggregated_signature,

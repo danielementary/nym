@@ -3,7 +3,7 @@
 
 use coconut_interface::{
     aggregate_signature_shares, aggregate_verification_keys, prepare_blind_sign,
-    prove_bandwidth_credential, Attribute, BlindSignRequestBody, Credential, Parameters, Signature,
+    prove_credential, Attribute, BlindSignRequestBody, Credential, Parameters, Signature,
     SignatureShare, VerificationKey,
 };
 use url::Url;
@@ -166,7 +166,7 @@ pub fn prepare_credential_for_spending(
     signature: &Signature,
     verification_key: &VerificationKey,
 ) -> Result<Credential, Error> {
-    let theta = prove_bandwidth_credential(
+    let theta = prove_credential(
         params,
         verification_key,
         signature,

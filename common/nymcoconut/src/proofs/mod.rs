@@ -321,31 +321,27 @@ impl ProofCmCs {
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct ProofKappaZeta {
+pub struct ProofKappa {
     // c
     challenge: Scalar,
 
     // responses
-    response_serial_number: Scalar,
-    response_binding_number: Scalar,
+    response_attributes: Vec<Scalar>,
+
     response_blinder: Scalar,
 }
 
-impl ProofKappaZeta {
+impl ProofKappa {
     pub(crate) fn construct(
         params: &Parameters,
         verification_key: &VerificationKey,
-        serial_number: &Attribute,
-        binding_number: &Attribute,
+        private_attributes: &[Attribute],
         blinding_factor: &Scalar,
         blinded_message: &G2Projective,
-        blinded_serial_number: &G2Projective,
     ) -> Self {
         // create the witnesses
         let witness_blinder = params.random_scalar();
-        let witness_serial_number = params.random_scalar();
-        let witness_binding_number = params.random_scalar();
-        let witness_attributes = vec![witness_serial_number, witness_binding_number];
+        let witness_attributes = params.n_random_scalars(private_attributes.len());
 
         let beta_bytes = verification_key
             .beta_g2
@@ -363,36 +359,28 @@ impl ProofKappaZeta {
                 .map(|(wm_i, beta_i)| beta_i * wm_i)
                 .sum::<G2Projective>();
 
-        // zeta is the public value associated with the serial number
-        let commitment_zeta = params.gen2() * witness_serial_number;
 
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
             std::iter::once(params.gen2().to_bytes().as_ref())
                 .chain(std::iter::once(blinded_message.to_bytes().as_ref()))
-                .chain(std::iter::once(blinded_serial_number.to_bytes().as_ref()))
                 .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
                 .chain(beta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref())),
         );
 
         // responses
         let response_blinder = produce_response(&witness_blinder, &challenge, blinding_factor);
-        let response_serial_number =
-            produce_response(&witness_serial_number, &challenge, serial_number);
-        let response_binding_number =
-            produce_response(&witness_binding_number, &challenge, binding_number);
+        let response_attributes = produce_responses(&witness_attributes, &challenge, private_attributes);
 
-        ProofKappaZeta {
+        ProofKappa {
             challenge,
-            response_serial_number,
-            response_binding_number,
+            response_attributes,
             response_blinder,
         }
     }
 
     pub(crate) fn private_attributes_len(&self) -> usize {
-        2
+        self.response_attributes.len()
     }
 
     pub(crate) fn verify(
@@ -400,7 +388,6 @@ impl ProofKappaZeta {
         params: &Parameters,
         verification_key: &VerificationKey,
         kappa: &G2Projective,
-        zeta: &G2Projective,
     ) -> bool {
         let beta_bytes = verification_key
             .beta_g2
@@ -408,30 +395,25 @@ impl ProofKappaZeta {
             .map(|beta_i| beta_i.to_bytes())
             .collect::<Vec<_>>();
 
-        let response_attributes = vec![self.response_serial_number, self.response_binding_number];
         // re-compute witnesses commitments
         // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])
         let commitment_kappa = kappa * self.challenge
             + params.gen2() * self.response_blinder
             + verification_key.alpha * (Scalar::one() - self.challenge)
-            + response_attributes
+            + self.response_attributes
                 .iter()
                 .zip(verification_key.beta_g2.iter())
                 .map(|(priv_attr, beta_i)| beta_i * priv_attr)
                 .sum::<G2Projective>();
 
-        // zeta is the public value associated with the serial number
-        let commitment_zeta = zeta * self.challenge + params.gen2() * self.response_serial_number;
 
         // compute the challenge
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
             std::iter::once(params.gen2().to_bytes().as_ref())
                 .chain(std::iter::once(kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(zeta.to_bytes().as_ref()))
                 .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
                 .chain(beta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref())),
         );
 
         challenge == self.challenge
@@ -439,27 +421,28 @@ impl ProofKappaZeta {
 
     // challenge || response serial number || response binding number || repose blinder
     pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let attributes_len = 2; // because we have serial number and the binding number
-        let mut bytes = Vec::with_capacity((1 + attributes_len + 1) as usize * 32);
+        let attributes_len = self.response_attributes.len() as u64; // because we have serial number and the binding number
+        let mut bytes = Vec::with_capacity(8 + (1 + attributes_len + 1) as usize * 32);
 
         bytes.extend_from_slice(&self.challenge.to_bytes());
-        bytes.extend_from_slice(&self.response_serial_number.to_bytes());
-        bytes.extend_from_slice(&self.response_binding_number.to_bytes());
-
         bytes.extend_from_slice(&self.response_blinder.to_bytes());
+        bytes.extend_from_slice(&attributes_len.to_le_bytes());
+        for rm in &self.response_attributes {
+            bytes.extend_from_slice(&rm.to_bytes());
+        }
 
         bytes
     }
 
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // at the very minimum there must be a single attribute being proven
-        if bytes.len() < 32 * 4 || (bytes.len()) % 32 != 0 {
+        if bytes.len() < 8 + 32 * 3 || (bytes.len() - 8) % 32 != 0 {
             return Err(CoconutError::DeserializationInvalidLength {
                 actual: bytes.len(),
                 modulus_target: bytes.len(),
                 modulus: 32,
-                object: "kappa and zeta".to_string(),
-                target: 32 * 4,
+                object: "kappa".to_string(),
+                target: 8 + 32 * 3,
             });
         }
 
@@ -469,28 +452,22 @@ impl ProofKappaZeta {
             CoconutError::Deserialization("Failed to deserialize challenge".to_string()),
         )?;
 
-        let serial_number_bytes = &bytes[32..64].try_into().unwrap();
-        let response_serial_number = try_deserialize_scalar(
-            serial_number_bytes,
-            CoconutError::Deserialization("failed to deserialize the serial number".to_string()),
-        )?;
-
-        let binding_number_bytes = &bytes[64..96].try_into().unwrap();
-        let response_binding_number = try_deserialize_scalar(
-            binding_number_bytes,
-            CoconutError::Deserialization("failed to deserialize the binding number".to_string()),
-        )?;
-
-        let blinder_bytes = bytes[96..].try_into().unwrap();
+        let blinder_bytes = bytes[32..64].try_into().unwrap();
         let response_blinder = try_deserialize_scalar(
             &blinder_bytes,
             CoconutError::Deserialization("failed to deserialize the blinder".to_string()),
         )?;
 
-        Ok(ProofKappaZeta {
+        let rm_len = u64::from_le_bytes(bytes[64..72].try_into().unwrap());
+        let response_attributes = try_deserialize_scalar_vec(
+            rm_len,
+            &bytes[72..],
+            CoconutError::Deserialization("Failed to deserialize attributes response".to_string()),
+        )?;
+
+        Ok(ProofKappa {
             challenge,
-            response_serial_number,
-            response_binding_number,
+            response_attributes,
             response_blinder,
         })
     }
@@ -558,45 +535,41 @@ mod tests {
         // we don't care about 'correctness' of the proof. only whether we can correctly recover it from bytes
         let serial_number = params.random_scalar();
         let binding_number = params.random_scalar();
-        let private_attributes = vec![serial_number, binding_number];
+        let private_attributes = params.n_random_scalars(2);
 
         let r = params.random_scalar();
         let kappa = compute_kappa(&params, &keypair.verification_key(), &private_attributes, r);
         let zeta = compute_zeta(&params, serial_number);
 
         // 0 public 2 private
-        let pi_v = ProofKappaZeta::construct(
+        let pi_v = ProofKappa::construct(
             &mut params,
             &keypair.verification_key(),
-            &serial_number,
-            &binding_number,
+            &private_attributes,
             &r,
             &kappa,
-            &zeta,
         );
 
         let proof_bytes = pi_v.to_bytes();
 
-        let proof_from_bytes = ProofKappaZeta::from_bytes(&proof_bytes).unwrap();
+        let proof_from_bytes = ProofKappa::from_bytes(&proof_bytes).unwrap();
         assert_eq!(proof_from_bytes, pi_v);
 
         // 2 public 2 private
         let mut params = setup(4).unwrap();
         let keypair = keygen(&mut params);
 
-        let pi_v = ProofKappaZeta::construct(
+        let pi_v = ProofKappa::construct(
             &mut params,
             &keypair.verification_key(),
-            &serial_number,
-            &binding_number,
+&private_attributes,
             &r,
             &kappa,
-            &zeta,
         );
 
         let proof_bytes = pi_v.to_bytes();
 
-        let proof_from_bytes = ProofKappaZeta::from_bytes(&proof_bytes).unwrap();
+        let proof_from_bytes = ProofKappa::from_bytes(&proof_bytes).unwrap();
         assert_eq!(proof_from_bytes, pi_v);
     }
 }

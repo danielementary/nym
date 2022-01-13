@@ -19,7 +19,7 @@ pub use scheme::keygen::KeyPair;
 pub use scheme::keygen::VerificationKey;
 pub use scheme::setup::setup;
 pub use scheme::setup::Parameters;
-pub use scheme::verification::prove_bandwidth_credential;
+pub use scheme::verification::prove_credential;
 pub use scheme::verification::verify_credential;
 pub use scheme::verification::Theta;
 pub use scheme::BlindedSignature;

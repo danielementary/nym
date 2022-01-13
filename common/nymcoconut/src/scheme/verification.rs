@@ -9,7 +9,7 @@ use bls12_381::{multi_miller_loop, G1Affine, G2Prepared, G2Projective, Scalar};
 use group::{Curve, Group};
 
 use crate::error::{CoconutError, Result};
-use crate::proofs::ProofKappaZeta;
+use crate::proofs::ProofKappa;
 use crate::scheme::setup::Parameters;
 use crate::scheme::Signature;
 use crate::scheme::VerificationKey;
@@ -24,22 +24,20 @@ use crate::Attribute;
 pub struct Theta {
     // blinded_message (kappa)
     pub blinded_message: G2Projective,
-    // blinded serial number (zeta)
-    pub blinded_serial_number: G2Projective,
     // sigma
     pub credential: Signature,
     // pi_v
-    pub pi_v: ProofKappaZeta,
+    pub pi_v: ProofKappa,
 }
 
 impl TryFrom<&[u8]> for Theta {
     type Error = CoconutError;
 
     fn try_from(bytes: &[u8]) -> Result<Theta> {
-        if bytes.len() < 288 {
+        if bytes.len() < 192 {
             return Err(
                 CoconutError::Deserialization(
-                    format!("Tried to deserialize theta with insufficient number of bytes, expected >= 288, got {}", bytes.len()),
+                    format!("Tried to deserialize theta with insufficient number of bytes, expected >= 192, got {}", bytes.len()),
                 ));
         }
 
@@ -51,20 +49,12 @@ impl TryFrom<&[u8]> for Theta {
             ),
         )?;
 
-        let blinded_serial_number_bytes = bytes[96..192].try_into().unwrap();
-        let blinded_serial_number = try_deserialize_g2_projective(
-            &blinded_serial_number_bytes,
-            CoconutError::Deserialization(
-                "failed to deserialize the blinded serial number (zeta)".to_string(),
-            ),
-        )?;
-        let credential = Signature::try_from(&bytes[192..288])?;
+        let credential = Signature::try_from(&bytes[96..192])?;
 
-        let pi_v = ProofKappaZeta::from_bytes(&bytes[288..])?;
+        let pi_v = ProofKappa::from_bytes(&bytes[192..])?;
 
         Ok(Theta {
             blinded_message,
-            blinded_serial_number,
             credential,
             pi_v,
         })
@@ -77,20 +67,17 @@ impl Theta {
             params,
             verification_key,
             &self.blinded_message,
-            &self.blinded_serial_number,
         )
     }
 
     // blinded message (kappa)  || blinded serial number (zeta) || credential || pi_v
     pub fn to_bytes(&self) -> Vec<u8> {
         let blinded_message_bytes = self.blinded_message.to_affine().to_compressed();
-        let blinded_serial_number_bytes = self.blinded_serial_number.to_affine().to_compressed();
         let credential_bytes = self.credential.to_bytes();
         let proof_bytes = self.pi_v.to_bytes();
 
-        let mut bytes = Vec::with_capacity(288 + proof_bytes.len());
+        let mut bytes = Vec::with_capacity(192 + proof_bytes.len());
         bytes.extend_from_slice(&blinded_message_bytes);
-        bytes.extend_from_slice(&blinded_serial_number_bytes);
         bytes.extend_from_slice(&credential_bytes);
         bytes.extend_from_slice(&proof_bytes);
 
@@ -133,12 +120,11 @@ pub fn compute_zeta(params: &Parameters, serial_number: Attribute) -> G2Projecti
     params.gen2() * serial_number
 }
 
-pub fn prove_bandwidth_credential(
+pub fn prove_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
     signature: &Signature,
-    serial_number: Attribute,
-    binding_number: Attribute,
+    private_attributes: &[Attribute],
 ) -> Result<Theta> {
     if verification_key.beta_g2.len() < 2 {
         return Err(
@@ -158,7 +144,6 @@ pub fn prove_bandwidth_credential(
     // Thus, we need kappa which allows us to verify sigma'. In particular,
     // kappa is computed on m as input, but thanks to the use or random value r,
     // it does not reveal any information about m.
-    let private_attributes = vec![serial_number, binding_number];
     let blinded_message = compute_kappa(
         params,
         verification_key,
@@ -166,22 +151,17 @@ pub fn prove_bandwidth_credential(
         sign_blinding_factor,
     );
 
-    // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-    let blinded_serial_number = compute_zeta(params, serial_number);
 
-    let pi_v = ProofKappaZeta::construct(
+    let pi_v = ProofKappa::construct(
         params,
         verification_key,
-        &serial_number,
-        &binding_number,
+        &private_attributes,
         &sign_blinding_factor,
         &blinded_message,
-        &blinded_serial_number,
     );
 
     Ok(Theta {
         blinded_message,
-        blinded_serial_number,
         credential: signature_prime,
         pi_v,
     })
@@ -280,15 +260,13 @@ mod tests {
         let s = params.random_scalar();
 
         let signature = Signature(params.gen1() * r, params.gen1() * s);
-        let serial_number = params.random_scalar();
-        let binding_number = params.random_scalar();
+        let private_attributes = params.n_random_scalars(2);
 
-        let theta = prove_bandwidth_credential(
+        let theta = prove_credential(
             &mut params,
             &keypair.verification_key(),
             &signature,
-            serial_number,
-            binding_number,
+            &private_attributes
         )
         .unwrap();
 

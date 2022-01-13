@@ -243,7 +243,7 @@ mod tests {
     use crate::scheme::aggregation::{aggregate_signatures, aggregate_verification_keys};
     use crate::scheme::issuance::{blind_sign, prepare_blind_sign, sign};
     use crate::scheme::keygen::{keygen, ttp_keygen};
-    use crate::scheme::verification::{prove_bandwidth_credential, verify, verify_credential};
+    use crate::scheme::verification::{prove_credential, verify, verify_credential};
     use crate::utils::hash_g1;
 
     use super::*;
@@ -305,9 +305,7 @@ mod tests {
     #[test]
     fn verification_on_two_private_attributes() {
         let mut params = Parameters::new(2).unwrap();
-        let serial_number = params.random_scalar();
-        let binding_number = params.random_scalar();
-        let private_attributes = vec![serial_number, binding_number];
+        let private_attributes = params.n_random_scalars(2);
 
         let keypair1 = keygen(&mut params);
         let keypair2 = keygen(&mut params);
@@ -339,21 +337,19 @@ mod tests {
             )
             .unwrap();
 
-        let theta1 = prove_bandwidth_credential(
+        let theta1 = prove_credential(
             &mut params,
             &keypair1.verification_key(),
             &sig1,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 
-        let theta2 = prove_bandwidth_credential(
+        let theta2 = prove_credential(
             &mut params,
             &keypair2.verification_key(),
             &sig2,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 
@@ -415,9 +411,7 @@ mod tests {
     fn verification_on_two_public_and_two_private_attributes() {
         let mut params = Parameters::new(4).unwrap();
         let public_attributes = params.n_random_scalars(2);
-        let serial_number = params.random_scalar();
-        let binding_number = params.random_scalar();
-        let private_attributes = vec![serial_number, binding_number];
+        let private_attributes = params.n_random_scalars(2);
 
         let keypair1 = keygen(&mut params);
         let keypair2 = keygen(&mut params);
@@ -459,21 +453,19 @@ mod tests {
         )
         .unwrap();
 
-        let theta1 = prove_bandwidth_credential(
+        let theta1 = prove_credential(
             &mut params,
             &keypair1.verification_key(),
             &sig1,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 
-        let theta2 = prove_bandwidth_credential(
+        let theta2 = prove_credential(
             &mut params,
             &keypair2.verification_key(),
             &sig2,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 
@@ -503,9 +495,7 @@ mod tests {
     fn verification_on_two_public_and_two_private_attributes_from_two_signers() {
         let mut params = Parameters::new(4).unwrap();
         let public_attributes = params.n_random_scalars(2);
-        let serial_number = params.random_scalar();
-        let binding_number = params.random_scalar();
-        let private_attributes = vec![serial_number, binding_number];
+        let private_attributes = params.n_random_scalars(2);
 
         let keypairs = ttp_keygen(&mut params, 2, 3).unwrap();
 
@@ -548,12 +538,11 @@ mod tests {
             aggregate_signatures(&params, &aggr_vk, &attributes, &sigs[..2], Some(&[1, 2]))
                 .unwrap();
 
-        let theta = prove_bandwidth_credential(
+        let theta = prove_credential(
             &mut params,
             &aggr_vk,
             &aggr_sig,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 
@@ -570,12 +559,11 @@ mod tests {
             aggregate_signatures(&params, &aggr_vk, &attributes, &sigs[1..], Some(&[2, 3]))
                 .unwrap();
 
-        let theta = prove_bandwidth_credential(
+        let theta = prove_credential(
             &mut params,
             &aggr_vk,
             &aggr_sig,
-            serial_number,
-            binding_number,
+            &private_attributes,
         )
         .unwrap();
 

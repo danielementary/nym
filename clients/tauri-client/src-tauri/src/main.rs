@@ -121,7 +121,7 @@ async fn prove_credential(
   let state = state.read().await;
 
   if let Some(signature) = state.signatures.get(idx) {
-    match coconut_interface::prove_bandwidth_credential(
+    match coconut_interface::prove_credential(
       &state.params,
       &verification_key,
       signature,

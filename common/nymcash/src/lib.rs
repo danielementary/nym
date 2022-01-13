@@ -4,6 +4,7 @@ use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature,
     CoconutError, KeyPair, Parameters, Signature, SignatureShare, VerificationKey,
 };
+use std::error::Error;
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -76,27 +77,26 @@ impl Voucher {
     }
 }
 
-// struct that carries all the information concerning a given list of vouchers
-pub struct VouchersList {
-    pub vouchers: Vec<Voucher>,
-    pub used: Vec<bool>,
-    pub commitments_openings: Vec<Vec<Scalar>>,
-    pub signatures: Vec<Signature>,
+// structs that carry all the information concerning a given list of signed vouchers
+pub struct SignedVoucher {
+    pub voucher: Voucher,
+    pub signature: Signature,
+    pub used: bool,
+}
+
+pub struct SignedVouchersList {
+    pub signedVouchers: Vec<SignedVoucher>,
 }
 
 impl VouchersList {
     pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> VouchersList {
-        let len = vouchers.len();
+        let signedVouchers = izip!(vouchers.iter(), signatures.iter()).map(|(v, s)| SignedVoucher { voucher: v, signature: s, used: false }).collect();
 
-        VouchersList {
-            vouchers,
-            used: vec![false; len],
-            signatures,
-        }
+        SignedVouchersList { signedVouchers }
     }
 
     // returns the list of indices from a VouchersList for vouchers to be spend for given values
-    pub fn find(&self, values: &[Scalar]) -> Option<Vec<usize>> {
+    fn find(&self, values: &[Scalar]) -> Result<Vec<&SignedVoucher>, Error> {
         let mut vouchers_indices = Vec::new();
 
         for val in values {
@@ -115,7 +115,18 @@ impl VouchersList {
         }
     }
 
-    // pub fn spend(&self, values: &[Scalar]) -> _ {}
+    pub fn prepare_vouchers_to_spend(&self, values) -> Result<(Vec<&Voucher>, Vec<&Signature>), Error> {
+        let mut vouchers = Vec::new();
+        let mut signatures = Vec::new();
+
+        let indices = self.find(values);
+        if indices.is_none() {
+            Err(Error)
+        }
+
+        //TODO
+        Ok((vouchers, signatures))
+    }
 }
 
 // returns a tuple with blind signatures requests and corresponding openings

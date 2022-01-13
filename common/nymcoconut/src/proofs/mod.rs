@@ -518,61 +518,96 @@ impl ProofSpend {
         signatures_blinding_factors: &[Scalar],
         blinded_messages_kappa: &[G2Projective],
         blinded_serial_numbers_zeta: &[G2Projective],
+        blinded_sum_C: &G2Projective,
     ) -> Self {
         // create the witnesses
         let witness_binding_number = params.random_scalar();
-
-        let witness_blinder = params.random_scalar();
-        let witness_serial_number = params.random_scalar();
-        let witness_binding_number = params.random_scalar();
-        let witness_attributes = vec![witness_serial_number, witness_binding_number];
-
-        let beta_bytes = verification_key
-            .beta_g2
-            .iter()
-            .map(|beta_i| beta_i.to_bytes())
-            .collect::<Vec<_>>();
+        let witnesses_values = params.n_random_scalars(values.len());
+        let witnesses_serial_numbers = params.n_random_scalars(serial_numbers.len());
+        let witnesses_signatures_blinding_factors =
+            params.n_random_scalars(signatures_blinding_factors.len());
 
         // witnesses commitments
-        // Aw = g2 * wt + alpha + beta[0] * wm[0] + ... + beta[i] * wm[i]
-        let commitment_kappa = params.gen2() * witness_blinder
-            + verification_key.alpha
-            + witness_attributes
-                .iter()
-                .zip(verification_key.beta_g2.iter())
-                .map(|(wm_i, beta_i)| beta_i * wm_i)
-                .sum::<G2Projective>();
+        let commitments_kappa: Vec<G2Projective> = izip!(
+            witnesses_values.iter(),
+            witnesses_serial_numbers.iter(),
+            witnesses_signatures_blinding_factors.iter()
+        )
+        .map(|(v, sn, b)| {
+            verification_key.alpha
+                + verification_key.beta_g2()[0] * binding_number
+                + verification_key.beta_g2()[1] * v
+                + verification_key.beta_g2()[2] * sn
+                + params.gen2() * b
+        })
+        .collect();
 
-        // zeta is the public value associated with the serial number
-        let commitment_zeta = params.gen2() * witness_serial_number;
+        let commitments_zeta: Vec<G2Projective> = witnesses_serial_numbers
+            .iter()
+            .map(|sn| params.gen2() * sn)
+            .collect();
+
+        let commitment_C: G2Projective = witnesses_values.iter().map(|v| params.gen2() * v).sum();
+
+        let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
+            .iter()
+            .map(|bmk| bmk.to_bytes())
+            .collect();
+        let blinded_serial_numbers_zeta_bytes: Vec<_> = blinded_serial_numbers_zeta
+            .iter()
+            .map(|bsnz| bsnz.to_bytes())
+            .collect();
+
+        let betas_g2_bytes: Vec<_> = verification_key
+            .beta_g2()
+            .iter()
+            .map(|b| b.to_bytes())
+            .collect();
+
+        let commitments_kappa_bytes: Vec<_> =
+            commitments_kappa.iter().map(|ck| ck.to_bytes()).collect();
+        let commitments_zeta_bytes: Vec<_> =
+            commitments_zeta.iter().map(|cz| cz.to_bytes()).collect();
 
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
-            std::iter::once(params.gen2().to_bytes().as_ref())
-                .chain(std::iter::once(blinded_message.to_bytes().as_ref()))
-                .chain(std::iter::once(blinded_serial_number.to_bytes().as_ref()))
-                .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
-                .chain(beta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+            blinded_messages_kappa_bytes
+                .iter()
+                .map(|b| b.as_ref())
+                .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(blinded_sum_C.to_bytes().as_ref()))
+                .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
+                .chain(std::iter::once(
+                    verification_key.alpha().to_bytes().as_ref(),
+                ))
+                .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
+                .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
+                .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(commitment_C.to_bytes().as_ref())),
         );
 
         // responses
-        let response_blinder = produce_response(&witness_blinder, &challenge, blinding_factor);
-        let response_serial_number =
-            produce_response(&witness_serial_number, &challenge, serial_number);
         let response_binding_number =
-            produce_response(&witness_binding_number, &challenge, binding_number);
+            produce_response(&witness_binding_number, &challenge, &binding_number);
+        let responses_values = produce_responses(&witnesses_values, &challenge, &values);
+        let responses_serial_numbers =
+            produce_responses(&witnesses_serial_numbers, &challenge, &serial_numbers);
+        let responses_blinders = produce_responses(
+            &witnesses_signatures_blinding_factors,
+            &challenge,
+            &signatures_blinding_factors,
+        );
 
         ProofSpend {
             challenge,
-            response_serial_number,
             response_binding_number,
-            response_blinder,
+            responses_values,
+            responses_serial_numbers,
+            responses_blinders,
         }
     }
 
     pub(crate) fn private_attributes_len(&self) -> usize {
-        2
+        3
     }
 
     pub(crate) fn verify(

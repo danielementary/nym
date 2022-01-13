@@ -201,11 +201,8 @@ pub fn prove_bandwidth_credential(
     }
 
     // Randomize the signature
-    let (signatures_prime, signatures_blinding_factors) = signatures
-        .iter()
-        .map(|s| s.randomise(&params))
-        .unzip()
-        .collect();
+    let (signatures_prime, signatures_blinding_factors): (Vec<Signature>, Vec<Scalar>) =
+        signatures.iter().map(|s| s.randomise(&params)).unzip();
 
     // blinded_message : kappa in the paper.
     // Value kappa is needed since we want to show a signature sigma'.
@@ -214,37 +211,45 @@ pub fn prove_bandwidth_credential(
     // Thus, we need kappa which allows us to verify sigma'. In particular,
     // kappa is computed on m as input, but thanks to the use or random value r,
     // it does not reveal any information about m.
-    let blinded_messages_kappa = izip!(
+    let blinded_messages_kappa: Vec<_> = izip!(
         values.iter(),
         serial_numbers.iter(),
         signatures_blinding_factors.iter()
     )
     .map(|(v, sn, sbf)| {
-        let private_attributes = vec![binding_number, v, sn];
-        let blinded_message = compute_kappa(&params, &verification_key, &private_attributes, sbf);
+        let private_attributes = vec![*binding_number, *v, *sn];
+        compute_kappa(&params, &verification_key, &private_attributes, *sbf)
     })
     .collect();
 
     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-    let blinded_serial_numbers_zeta = serial_numbers
+    let blinded_serial_numbers_zeta: Vec<_> = serial_numbers
         .iter()
-        .map(|sn| compute_zeta(&params, sn))
+        .map(|sn| compute_zeta(&params, *sn))
         .collect();
 
+    let blinded_sum_C = values.iter().map(|v| params.gen2() * v).sum();
+
     let pi_v = ProofSpend::construct(
-        params,
-        verification_key,
-        &serial_number,
+        &params,
+        &verification_key,
         &binding_number,
-        &sign_blinding_factor,
-        &blinded_message,
-        &blinded_serial_number,
+        &values,
+        &serial_numbers,
+        &signatures_blinding_factors,
+        &blinded_messages_kappa,
+        &blinded_serial_numbers_zeta,
+        &blinded_sum_C,
     );
 
+    let number_of_vouchers_spent = values.len() as u32;
+    // TODO continue here
     Ok(ThetaSpend {
-        blinded_message,
-        blinded_serial_number,
-        credential: signature_prime,
+        number_of_vouchers_spent,
+        blinded_messages_kappa,
+        blinded_serial_numbers_zeta,
+        signatures,
+        blinded_sum_C,
         pi_v,
     })
 }
@@ -254,7 +259,7 @@ pub fn verify_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
     theta: &ThetaSpend,
-    public_attributes: &[Attribute],
+    public_attributes: &[Scalar],
 ) -> bool {
     if public_attributes.len() + theta.pi_v.private_attributes_len()
         > verification_key.beta_g2.len()

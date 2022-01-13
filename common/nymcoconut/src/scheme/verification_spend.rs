@@ -1,6 +1,7 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use itertools::izip;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
@@ -15,7 +16,6 @@ use crate::scheme::verification::{compute_kappa, compute_zeta};
 use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
 use crate::utils::{try_deserialize_g2_projective, try_deserialize_scalar};
-use crate::Attribute;
 
 // TODO NAMING: this whole thing
 // ThetaSpend
@@ -183,23 +183,29 @@ impl Bytable for ThetaSpend {
 
 impl Base58 for ThetaSpend {}
 
+//TODO
 pub fn prove_bandwidth_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
-    signature: &Signature,
-    serial_number: Attribute,
-    binding_number: Attribute,
+    binding_number: &Scalar,
+    values: &[Scalar],
+    serial_numbers: &[Scalar],
+    signatures: &[Signature],
 ) -> Result<ThetaSpend> {
-    if verification_key.beta_g2.len() < 2 {
+    if verification_key.beta_g2.len() < 3 {
         return Err(
             CoconutError::Verification(
-                format!("Tried to prove a credential for higher than supported by the provided verification key number of attributes (max: {}, requested: 2)",
+                format!("Tried to prove a credential for higher than supported by the provided verification key number of attributes (max: {}, requested: 3)",
                         verification_key.beta_g2.len()
                 )));
     }
 
     // Randomize the signature
-    let (signature_prime, sign_blinding_factor) = signature.randomise(params);
+    let (signatures_prime, signatures_blinding_factors) = signatures
+        .iter()
+        .map(|s| s.randomise(&params))
+        .unzip()
+        .collect();
 
     // blinded_message : kappa in the paper.
     // Value kappa is needed since we want to show a signature sigma'.
@@ -208,16 +214,22 @@ pub fn prove_bandwidth_credential(
     // Thus, we need kappa which allows us to verify sigma'. In particular,
     // kappa is computed on m as input, but thanks to the use or random value r,
     // it does not reveal any information about m.
-    let private_attributes = vec![serial_number, binding_number];
-    let blinded_message = compute_kappa(
-        params,
-        verification_key,
-        &private_attributes,
-        sign_blinding_factor,
-    );
+    let blinded_messages_kappa = izip!(
+        values.iter(),
+        serial_numbers.iter(),
+        signatures_blinding_factors.iter()
+    )
+    .map(|(v, sn, sbf)| {
+        let private_attributes = vec![binding_number, v, sn];
+        let blinded_message = compute_kappa(&params, &verification_key, &private_attributes, sbf);
+    })
+    .collect();
 
     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-    let blinded_serial_number = compute_zeta(params, serial_number);
+    let blinded_serial_numbers_zeta = serial_numbers
+        .iter()
+        .map(|sn| compute_zeta(&params, sn))
+        .collect();
 
     let pi_v = ProofSpend::construct(
         params,
@@ -237,6 +249,7 @@ pub fn prove_bandwidth_credential(
     })
 }
 
+//TODO
 pub fn verify_credential(
     params: &Parameters,
     verification_key: &VerificationKey,

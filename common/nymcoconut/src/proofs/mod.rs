@@ -512,13 +512,16 @@ impl ProofSpend {
     pub(crate) fn construct(
         params: &Parameters,
         verification_key: &VerificationKey,
-        serial_number: &Attribute,
-        binding_number: &Attribute,
-        blinding_factor: &Scalar,
-        blinded_message: &G2Projective,
-        blinded_serial_number: &G2Projective,
+        binding_number: &Scalar,
+        values: &[Scalar],
+        serial_numbers: &[Scalar],
+        signatures_blinding_factors: &[Scalar],
+        blinded_messages_kappa: &[G2Projective],
+        blinded_serial_numbers_zeta: &[G2Projective],
     ) -> Self {
         // create the witnesses
+        let witness_binding_number = params.random_scalar();
+
         let witness_blinder = params.random_scalar();
         let witness_serial_number = params.random_scalar();
         let witness_binding_number = params.random_scalar();

@@ -147,9 +147,7 @@ fn bench_coconut(c: &mut Criterion) {
     let params = setup((case.num_public_attrs + case.num_private_attrs)).unwrap();
 
     let public_attributes = params.n_random_scalars(case.num_public_attrs as usize);
-    let serial_number = params.random_scalar();
-    let binding_number = params.random_scalar();
-    let private_attributes = vec![serial_number, binding_number];
+    let private_attributes = params.n_random_scalars(case.num_public_attrs as usize);
 
     let elgamal_keypair = elgamal_keygen(&params);
 
@@ -265,8 +263,7 @@ fn bench_coconut(c: &mut Criterion) {
         &params,
         &aggr_verification_key,
         &aggregated_signature,
-        serial_number,
-        binding_number
+        &private_attributes,
     )
         .unwrap();
 
@@ -284,8 +281,7 @@ fn bench_coconut(c: &mut Criterion) {
                     &params,
                     &aggr_verification_key,
                     &aggregated_signature,
-                    serial_number,
-                    binding_number
+                    &private_attributes,
                 )
                     .unwrap()
             })

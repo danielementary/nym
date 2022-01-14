@@ -183,7 +183,6 @@ impl Bytable for ThetaSpend {
 
 impl Base58 for ThetaSpend {}
 
-//TODO
 pub fn prove_bandwidth_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
@@ -211,7 +210,7 @@ pub fn prove_bandwidth_credential(
     // Thus, we need kappa which allows us to verify sigma'. In particular,
     // kappa is computed on m as input, but thanks to the use or random value r,
     // it does not reveal any information about m.
-    let blinded_messages_kappa: Vec<_> = izip!(
+    let blinded_messages: Vec<_> = izip!(
         values.iter(),
         serial_numbers.iter(),
         signatures_blinding_factors.iter()
@@ -223,33 +222,33 @@ pub fn prove_bandwidth_credential(
     .collect();
 
     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-    let blinded_serial_numbers_zeta: Vec<_> = serial_numbers
+    let blinded_serial_numbers: Vec<_> = serial_numbers
         .iter()
         .map(|sn| compute_zeta(&params, *sn))
         .collect();
 
-    let blinded_sum_C = values.iter().map(|v| params.gen2() * v).sum();
+    let blinded_spent_amount = values.iter().map(|v| params.gen2() * v).sum();
 
+    let number_of_vouchers_spent = values.len() as u32;
     let pi_v = ProofSpend::construct(
         &params,
         &verification_key,
+        number_of_vouchers_spent,
         &binding_number,
         &values,
         &serial_numbers,
         &signatures_blinding_factors,
-        &blinded_messages_kappa,
-        &blinded_serial_numbers_zeta,
-        &blinded_sum_C,
+        &blinded_messages,
+        &blinded_serial_numbers,
+        &blinded_spent_amount,
     );
 
-    let number_of_vouchers_spent = values.len() as u32;
-    // TODO continue here
     Ok(ThetaSpend {
         number_of_vouchers_spent,
-        blinded_messages_kappa,
-        blinded_serial_numbers_zeta,
-        signatures,
-        blinded_sum_C,
+        blinded_messages,
+        blinded_serial_numbers,
+        blinded_spent_amount,
+        vouchers_signatures: signatures_prime,
         pi_v,
     })
 }

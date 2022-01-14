@@ -698,23 +698,26 @@ impl ProofSpend {
     // responses serial numbers || responses blinders
     pub(crate) fn to_bytes(&self) -> Vec<u8> {
         let mut bytes =
-            Vec::with_capacity(4 + 32 + 32 + (3 * number_of_vouchers_spent) as usize * 32);
+            Vec::with_capacity(4 + 32 + 32 + (3 * self.number_of_vouchers_spent) as usize * 32);
 
-        let responses_values_bytes = responses_values
+        let responses_values_bytes = self
+            .responses_values
             .iter()
             .map(|v| v.to_bytes())
             .flatten()
-            .collect();
-        let responses_serial_numbers_bytes = responses_serial_numbers
+            .collect::<Vec<u8>>();
+        let responses_serial_numbers_bytes = self
+            .responses_serial_numbers
             .iter()
             .map(|sn| sn.to_bytes())
             .flatten()
-            .collect();
-        let responses_blinders_bytes = responses_blinders
+            .collect::<Vec<u8>>();
+        let responses_blinders_bytes = self
+            .responses_blinders
             .iter()
             .map(|b| b.to_bytes())
             .flatten()
-            .collect();
+            .collect::<Vec<u8>>();
 
         bytes.extend_from_slice(&self.number_of_vouchers_spent.to_be_bytes());
         bytes.extend_from_slice(&self.challenge.to_bytes());
@@ -728,45 +731,76 @@ impl ProofSpend {
 
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // at the very minimum there must be a single attribute being proven
-        if bytes.len() < 32 * 4 || (bytes.len()) % 32 != 0 {
+        if bytes.len() < 32 * 5 + 4 || (bytes.len() - 4) % 32 != 0 {
             return Err(CoconutError::DeserializationInvalidLength {
                 actual: bytes.len(),
                 modulus_target: bytes.len(),
                 modulus: 32,
-                object: "kappa and zeta".to_string(),
-                target: 32 * 4,
+                object: "kappa and zeta and C".to_string(),
+                target: 32 * 5,
             });
         }
 
-        let challenge_bytes = bytes[..32].try_into().unwrap();
+        let mut p = 0;
+        let mut p_prime = 4;
+        let number_of_vouchers_spent = u32::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+
+        p = p_prime;
+        p_prime += 32;
+        let challenge_bytes = &bytes[p..p_prime].try_into().unwrap();
         let challenge = try_deserialize_scalar(
-            &challenge_bytes,
-            CoconutError::Deserialization("Failed to deserialize challenge".to_string()),
+            challenge_bytes,
+            CoconutError::Deserialization("failed to deserialize the challenge".to_string()),
         )?;
 
-        let serial_number_bytes = &bytes[32..64].try_into().unwrap();
-        let response_serial_number = try_deserialize_scalar(
-            serial_number_bytes,
-            CoconutError::Deserialization("failed to deserialize the serial number".to_string()),
-        )?;
-
-        let binding_number_bytes = &bytes[64..96].try_into().unwrap();
+        p = p_prime;
+        p_prime += 32;
+        let response_binding_number_bytes = &bytes[p..p_prime].try_into().unwrap();
         let response_binding_number = try_deserialize_scalar(
-            binding_number_bytes,
-            CoconutError::Deserialization("failed to deserialize the binding number".to_string()),
+            response_binding_number_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the response binding number".to_string(),
+            ),
         )?;
 
-        let blinder_bytes = bytes[96..].try_into().unwrap();
-        let response_blinder = try_deserialize_scalar(
-            &blinder_bytes,
-            CoconutError::Deserialization("failed to deserialize the blinder".to_string()),
+        p = p_prime;
+        p_prime += 32 * number_of_vouchers_spent as usize;
+        let responses_values_bytes = &bytes[p..p_prime];
+        let responses_values = try_deserialize_scalar_vec(
+            number_of_vouchers_spent as u64,
+            &responses_values_bytes,
+            CoconutError::Deserialization("failed to deserialize the responses values".to_string()),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_vouchers_spent as usize;
+        let responses_serial_numbers_bytes = &bytes[p..p_prime];
+        let responses_serial_numbers = try_deserialize_scalar_vec(
+            number_of_vouchers_spent as u64,
+            &responses_serial_numbers_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses serial numbers".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_vouchers_spent as usize;
+        let responses_blinders_bytes = &bytes[p..p_prime];
+        let responses_blinders = try_deserialize_scalar_vec(
+            number_of_vouchers_spent as u64,
+            &responses_blinders_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses blinders".to_string(),
+            ),
         )?;
 
         Ok(ProofSpend {
+            number_of_vouchers_spent,
             challenge,
-            response_serial_number,
             response_binding_number,
-            response_blinder,
+            responses_values,
+            responses_serial_numbers,
+            responses_blinders,
         })
     }
 }

@@ -253,16 +253,13 @@ pub fn prove_bandwidth_credential(
     })
 }
 
-//TODO
 pub fn verify_credential(
     params: &Parameters,
     verification_key: &VerificationKey,
     theta: &ThetaSpend,
-    public_attributes: &[Scalar],
+    infos: &[Scalar],
 ) -> bool {
-    if public_attributes.len() + theta.pi_v.private_attributes_len()
-        > verification_key.beta_g2.len()
-    {
+    if verification_key.beta_g2.len() < 4 {
         return false;
     }
 
@@ -270,29 +267,29 @@ pub fn verify_credential(
         return false;
     }
 
-    let kappa = if public_attributes.is_empty() {
-        theta.blinded_message
-    } else {
-        let signed_public_attributes = public_attributes
-            .iter()
-            .zip(
-                verification_key
-                    .beta_g2
-                    .iter()
-                    .skip(theta.pi_v.private_attributes_len()),
-            )
-            .map(|(pub_attr, beta_i)| beta_i * pub_attr)
-            .sum::<G2Projective>();
+    let blinded_messages: Vec<_> = theta
+        .blinded_messages
+        .iter()
+        .zip(infos.iter())
+        .map(|(bm, i)| bm + verification_key.beta_g2()[3] * i)
+        .collect();
 
-        theta.blinded_message + signed_public_attributes
-    };
+    for (vs, bm) in izip!(theta.vouchers_signatures.iter(), blinded_messages.iter()) {
+        if !check_bilinear_pairing(
+            &vs.0.to_affine(),
+            &G2Prepared::from(bm.to_affine()),
+            &vs.1.to_affine(),
+            params.prepared_miller_g2(),
+        ) {
+            return false;
+        }
 
-    check_bilinear_pairing(
-        &theta.credential.0.to_affine(),
-        &G2Prepared::from(kappa.to_affine()),
-        &(theta.credential.1).to_affine(),
-        params.prepared_miller_g2(),
-    ) && !bool::from(theta.credential.0.is_identity())
+        if !bool::from(vs.0.is_identity()) {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

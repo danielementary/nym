@@ -499,6 +499,7 @@ impl ProofKappaZeta {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ProofSpend {
+    number_of_vouchers_spent: u32,
     // c
     challenge: Scalar,
     // responses
@@ -512,6 +513,7 @@ impl ProofSpend {
     pub(crate) fn construct(
         params: &Parameters,
         verification_key: &VerificationKey,
+        number_of_vouchers_spent: u32,
         binding_number: &Scalar,
         values: &[Scalar],
         serial_numbers: &[Scalar],
@@ -598,6 +600,7 @@ impl ProofSpend {
         );
 
         ProofSpend {
+            number_of_vouchers_spent,
             challenge,
             response_binding_number,
             responses_values,
@@ -691,16 +694,34 @@ impl ProofSpend {
         challenge == self.challenge
     }
 
-    // challenge || response serial number || response binding number || repose blinder
+    // number of vouchers spent || challenge || response binding number || responses values ||
+    // responses serial numbers || responses blinders
     pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let attributes_len = 2; // because we have serial number and the binding number
-        let mut bytes = Vec::with_capacity((1 + attributes_len + 1) as usize * 32);
+        let mut bytes =
+            Vec::with_capacity(4 + 32 + 32 + (3 * number_of_vouchers_spent) as usize * 32);
 
+        let responses_values_bytes = responses_values
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect();
+        let responses_serial_numbers_bytes = responses_serial_numbers
+            .iter()
+            .map(|sn| sn.to_bytes())
+            .flatten()
+            .collect();
+        let responses_blinders_bytes = responses_blinders
+            .iter()
+            .map(|b| b.to_bytes())
+            .flatten()
+            .collect();
+
+        bytes.extend_from_slice(&self.number_of_vouchers_spent.to_be_bytes());
         bytes.extend_from_slice(&self.challenge.to_bytes());
-        bytes.extend_from_slice(&self.response_serial_number.to_bytes());
         bytes.extend_from_slice(&self.response_binding_number.to_bytes());
-
-        bytes.extend_from_slice(&self.response_blinder.to_bytes());
+        bytes.extend(responses_values_bytes);
+        bytes.extend(responses_serial_numbers_bytes);
+        bytes.extend(responses_blinders_bytes);
 
         bytes
     }

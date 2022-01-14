@@ -616,7 +616,7 @@ impl ProofSpend {
         verification_key: &VerificationKey,
         blinded_messages_kappa: &[G2Projective],
         blinded_serial_numbers_zeta: &[G2Projective],
-        blinded_sum_C: G2Projective,
+        blinded_sum_C: &G2Projective,
     ) -> bool {
         // re-compute witnesses commitments
         // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])

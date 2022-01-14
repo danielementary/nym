@@ -15,7 +15,7 @@ use crate::scheme::setup::Parameters;
 use crate::scheme::verification::{compute_kappa, compute_zeta};
 use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
-use crate::utils::{try_deserialize_g2_projective, try_deserialize_scalar};
+use crate::utils::try_deserialize_g2_projective;
 
 // TODO NAMING: this whole thing
 // ThetaSpend
@@ -27,10 +27,10 @@ pub struct ThetaSpend {
     pub blinded_messages: Vec<G2Projective>,
     // blinded serial numbers (zetas)
     pub blinded_serial_numbers: Vec<G2Projective>,
+    // total amount spent
+    pub blinded_spent_amount: G2Projective,
     // sigma
     pub vouchers_signatures: Vec<Signature>,
-    // total amount spent
-    pub total_amount: Scalar,
     // pi_v
     pub pi_v: ProofSpend,
 }
@@ -39,11 +39,11 @@ impl TryFrom<&[u8]> for ThetaSpend {
     type Error = CoconutError;
 
     fn try_from(bytes: &[u8]) -> Result<ThetaSpend> {
-        // 4 + 96 + 96 + 96 + 32 + ? >= 324
-        if bytes.len() < 324 {
+        // 4 + 96 + 96 + 96 + 96 + ? >= 388
+        if bytes.len() < 388 {
             return Err(
                 CoconutError::Deserialization(
-                    format!("Tried to deserialize ThetaSpend with insufficient number of bytes, expected >= 324, got {}", bytes.len()),
+                    format!("Tried to deserialize ThetaSpend with insufficient number of bytes, expected >= 388, got {}", bytes.len()),
                 ));
         }
 
@@ -85,6 +85,14 @@ impl TryFrom<&[u8]> for ThetaSpend {
             blinded_serial_numbers.push(blinded_serial_number);
         }
 
+        p = p_prime;
+        p_prime += 96;
+        let blinded_spent_amount_bytes = bytes[p..p_prime].try_into().unwrap();
+        let blinded_spent_amount = try_deserialize_g2_projective(
+            &blinded_spent_amount_bytes,
+            CoconutError::Deserialization("failed to deserialize blinded spent amount".to_string()),
+        )?;
+
         let mut vouchers_signatures = Vec::with_capacity(number_of_vouchers_spent as usize);
         for i in 0..number_of_vouchers_spent {
             p = p_prime;
@@ -96,22 +104,14 @@ impl TryFrom<&[u8]> for ThetaSpend {
         }
 
         p = p_prime;
-        p_prime += 32;
-        let total_amount_bytes = bytes[p..p_prime].try_into().unwrap();
-        let total_amount = try_deserialize_scalar(
-            &total_amount_bytes,
-            CoconutError::Deserialization("failed to deserialize total amount".to_string()),
-        )?;
-
-        p = p_prime;
         let pi_v = ProofSpend::from_bytes(&bytes[p..])?;
 
         Ok(ThetaSpend {
             number_of_vouchers_spent,
             blinded_messages,
             blinded_serial_numbers,
+            blinded_spent_amount,
             vouchers_signatures,
-            total_amount,
             pi_v,
         })
     }
@@ -124,7 +124,7 @@ impl ThetaSpend {
             verification_key,
             &self.blinded_messages,
             &self.blinded_serial_numbers,
-            &self.total_amount,
+            &self.blinded_spent_amount,
         )
     }
 
@@ -143,24 +143,24 @@ impl ThetaSpend {
             .map(|sn| sn.to_affine().to_compressed())
             .flatten()
             .collect::<Vec<u8>>();
+        let blinded_spent_amount_bytes = self.blinded_spent_amount.to_affine().to_compressed();
         let vouchers_signatures_bytes = self
             .vouchers_signatures
             .iter()
             .map(|s| s.to_bytes())
             .flatten()
             .collect::<Vec<u8>>();
-        let total_amount_bytes = self.total_amount.to_bytes();
         let pi_v_bytes = self.pi_v.to_bytes();
 
         let mut bytes = Vec::with_capacity(
-            4 + self.number_of_vouchers_spent as usize * (96 + 96 + 96 + 32) + pi_v_bytes.len(),
+            4 + self.number_of_vouchers_spent as usize * (96 + 96 + 96) + 96 + pi_v_bytes.len(),
         );
 
         bytes.extend(number_of_vouchers_spent_bytes);
         bytes.extend(blinded_message_bytes);
         bytes.extend(blinded_serial_number_bytes);
-        bytes.extend(total_amount_bytes);
-        bytes.extend(total_amount_bytes);
+        bytes.extend(blinded_spent_amount_bytes);
+        bytes.extend(vouchers_signatures_bytes);
         bytes.extend(pi_v_bytes);
 
         bytes

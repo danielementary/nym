@@ -520,7 +520,7 @@ impl ProofSpend {
         signatures_blinding_factors: &[Scalar],
         blinded_messages_kappa: &[G2Projective],
         blinded_serial_numbers_zeta: &[G2Projective],
-        blinded_sum_C: &G2Projective,
+        blinded_sum_c: &G2Projective,
     ) -> Self {
         // create the witnesses
         let witness_binding_number = params.random_scalar();
@@ -549,7 +549,7 @@ impl ProofSpend {
             .map(|sn| params.gen2() * sn)
             .collect();
 
-        let commitment_C: G2Projective = witnesses_values.iter().map(|v| params.gen2() * v).sum();
+        let commitment_c: G2Projective = witnesses_values.iter().map(|v| params.gen2() * v).sum();
 
         let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
             .iter()
@@ -576,7 +576,7 @@ impl ProofSpend {
                 .iter()
                 .map(|b| b.as_ref())
                 .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(blinded_sum_C.to_bytes().as_ref()))
+                .chain(std::iter::once(blinded_sum_c.to_bytes().as_ref()))
                 .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
                 .chain(std::iter::once(
                     verification_key.alpha().to_bytes().as_ref(),
@@ -584,7 +584,7 @@ impl ProofSpend {
                 .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_C.to_bytes().as_ref())),
+                .chain(std::iter::once(commitment_c.to_bytes().as_ref())),
         );
 
         // responses
@@ -619,7 +619,7 @@ impl ProofSpend {
         verification_key: &VerificationKey,
         blinded_messages_kappa: &[G2Projective],
         blinded_serial_numbers_zeta: &[G2Projective],
-        blinded_sum_C: &G2Projective,
+        blinded_sum_c: &G2Projective,
     ) -> bool {
         // re-compute witnesses commitments
         // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])
@@ -647,7 +647,7 @@ impl ProofSpend {
         .map(|(z, sn)| z * self.challenge + params.gen2() * sn)
         .collect();
 
-        let commitment_C = blinded_sum_C * self.challenge
+        let commitment_c = blinded_sum_c * self.challenge
             + self
                 .responses_values
                 .iter()
@@ -680,7 +680,7 @@ impl ProofSpend {
                 .iter()
                 .map(|b| b.as_ref())
                 .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(blinded_sum_C.to_bytes().as_ref()))
+                .chain(std::iter::once(blinded_sum_c.to_bytes().as_ref()))
                 .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
                 .chain(std::iter::once(
                     verification_key.alpha().to_bytes().as_ref(),
@@ -688,7 +688,7 @@ impl ProofSpend {
                 .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_C.to_bytes().as_ref())),
+                .chain(std::iter::once(commitment_c.to_bytes().as_ref())),
         );
 
         challenge == self.challenge

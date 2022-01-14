@@ -4,7 +4,6 @@ use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature,
     CoconutError, KeyPair, Parameters, Signature, SignatureShare, VerificationKey,
 };
-use std::error::Error;
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -94,12 +93,12 @@ pub struct SignedVouchersList {
     pub signed_vouchers: Vec<SignedVoucher>,
 }
 
-impl VouchersList {
-    pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> VouchersList {
+impl SignedVouchersList {
+    pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> SignedVouchersList {
         let signed_vouchers = izip!(vouchers.iter(), signatures.iter())
             .map(|(v, s)| SignedVoucher {
-                voucher: v,
-                signature: s,
+                voucher: *v,
+                signature: *s,
                 used: false,
             })
             .collect();
@@ -108,23 +107,24 @@ impl VouchersList {
     }
 
     // returns a list of references to signed vouchers to be spend for given values
-    pub fn find(&self, values: &[Scalar]) -> Result<Vec<&mut SignedVoucher>, Error> {
+    pub fn find(&self, values: &[Scalar]) -> Vec<&mut SignedVoucher> {
         let mut signed_vouchers = Vec::new();
 
         for val in values {
             for sv in self.signed_vouchers.iter() {
-                if sv.voucher.value == *val && !sv.voucher.used && !signed_vouchers.contains(&sv) {
-                    vouchers_indices.push(sv);
+                // TODO
+                if sv.voucher.value == *val && !sv.used && !signed_vouchers.contains(&sv) {
+                    signed_vouchers.push(sv);
                     break;
                 }
             }
         }
 
-        if signed_vouchers.len() == values.len() {
-            Ok(signed_vouchers)
-        } else {
-            Err(Error)
+        if signed_vouchers.len() != values.len() {
+            panic!("Could not pick vouchers for the required values");
         }
+
+        signed_vouchers
     }
 }
 
@@ -210,14 +210,13 @@ fn aggregate_vouchers_signatures_shares(
         .collect()
 }
 
-fn prepare_vouchers_to_be_spent(
-    params: &Parameters,
-    authorities_verification_key: &VerificationKey,
-    vouchers_to_be_spent: &[&mut SignedVoucher],
-) -> Result<ThetaSpend, Error> {
-    //TODO
-    Err(Error)
-}
+//fn prepare_vouchers_to_be_spent(
+//    params: &Parameters,
+//    authorities_verification_key: &VerificationKey,
+//    vouchers_to_be_spent: &[&mut SignedVoucher],
+//) -> ThetaSpend{
+//    //TODO
+//}
 
 #[cfg(test)]
 mod tests {

@@ -94,7 +94,7 @@ impl TryFrom<&[u8]> for ThetaSpend {
         )?;
 
         let mut vouchers_signatures = Vec::with_capacity(number_of_vouchers_spent as usize);
-        for i in 0..number_of_vouchers_spent {
+        for _ in 0..number_of_vouchers_spent {
             p = p_prime;
             p_prime += 96;
 

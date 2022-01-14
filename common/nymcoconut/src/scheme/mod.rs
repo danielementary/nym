@@ -607,6 +607,10 @@ mod tests {
             blinded_sig.1.to_affine().to_compressed(),
         ]
         .concat();
+
+        println!("BlindedSignature: {:?}", bytes.len());
+        println!("BlindedSignature h: {:?}",blinded_sig.0.to_affine().to_compressed().len());
+        println!("BlindedSignature s: {:?}",blinded_sig.1.to_affine().to_compressed().len());
         assert_eq!(expected_bytes, bytes);
         assert_eq!(blinded_sig, BlindedSignature::try_from(&bytes[..]).unwrap())
     }

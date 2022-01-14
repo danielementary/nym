@@ -271,6 +271,7 @@ mod tests {
         .unwrap();
 
         let bytes = theta.to_bytes();
+        println!("Theta (Prove credential) containing kappa, credential and zk proof {:?}", bytes.len());
         assert_eq!(Theta::try_from(bytes.as_slice()).unwrap(), theta);
     }
 }

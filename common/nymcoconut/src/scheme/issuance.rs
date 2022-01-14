@@ -370,6 +370,9 @@ mod tests {
 
         let bytes = lambda.to_bytes();
         println!("BlindSign Request (commitment, commitment hash, private_attributes_commitments, proof) {:?}", bytes.len());
+        println!("Commitment: {:?}", lambda.commitment.to_affine().to_compressed().len());
+        println!("Commitment hash: {:?}", lambda.commitment_hash.to_affine().to_compressed().len());
+        println!("Proof: {:?}", lambda.pi_s.to_bytes().len());
         assert_eq!(
             BlindSignRequest::try_from(bytes.as_slice()).unwrap(),
             lambda

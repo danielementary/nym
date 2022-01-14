@@ -356,7 +356,6 @@ mod tests {
             prepare_blind_sign(&mut params, &private_attributes, &public_attributes).unwrap();
 
         let bytes = lambda.to_bytes();
-        println!("{:?}", bytes.len());
         assert_eq!(
             BlindSignRequest::try_from(bytes.as_slice()).unwrap(),
             lambda

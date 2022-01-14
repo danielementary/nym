@@ -614,39 +614,79 @@ impl ProofSpend {
         &self,
         params: &Parameters,
         verification_key: &VerificationKey,
-        kappa: &G2Projective,
-        zeta: &G2Projective,
+        blinded_messages_kappa: &[G2Projective],
+        blinded_serial_numbers_zeta: &[G2Projective],
+        blinded_sum_C: G2Projective,
     ) -> bool {
-        let beta_bytes = verification_key
-            .beta_g2
-            .iter()
-            .map(|beta_i| beta_i.to_bytes())
-            .collect::<Vec<_>>();
-
-        let response_attributes = vec![self.response_serial_number, self.response_binding_number];
         // re-compute witnesses commitments
         // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])
-        let commitment_kappa = kappa * self.challenge
-            + params.gen2() * self.response_blinder
-            + verification_key.alpha * (Scalar::one() - self.challenge)
-            + response_attributes
-                .iter()
-                .zip(verification_key.beta_g2.iter())
-                .map(|(priv_attr, beta_i)| beta_i * priv_attr)
-                .sum::<G2Projective>();
+        let commitments_kappa = izip!(
+            blinded_messages_kappa.iter(),
+            self.responses_values.iter(),
+            self.responses_serial_numbers.iter(),
+            self.responses_blinders.iter(),
+        )
+        .map(|(k, v, sn, b)| {
+            k * self.challenge
+                + verification_key.alpha() * (Scalar::one() - self.challenge)
+                + verification_key.beta_g2()[0] * self.response_binding_number
+                + verification_key.beta_g2()[1] * v
+                + verification_key.beta_g2()[2] * sn
+                + params.gen2() * b
+        })
+        .collect();
 
         // zeta is the public value associated with the serial number
-        let commitment_zeta = zeta * self.challenge + params.gen2() * self.response_serial_number;
+        let commitments_zeta = izip!(
+            blinded_serial_numbers_zeta.iter(),
+            self.responses_serial_numbers.iter()
+        )
+        .map(|(z, sn)| z * self.challenge + params.gen2() * sn)
+        .collect();
+
+        let commitment_C = blinded_sum_C * self.challenge
+            + params.gen2()
+            + self
+                .responses_values
+                .iter()
+                .map(|v| params.gen2() * v)
+                .sum();
+
+        let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
+            .iter()
+            .map(|bmk| bmk.to_bytes())
+            .collect();
+        let blinded_serial_numbers_zeta_bytes: Vec<_> = blinded_serial_numbers_zeta
+            .iter()
+            .map(|bsnz| bsnz.to_bytes())
+            .collect();
+
+        let betas_g2_bytes: Vec<_> = verification_key
+            .beta_g2()
+            .iter()
+            .map(|b| b.to_bytes())
+            .collect();
 
         // compute the challenge
+        let commitments_kappa_bytes: Vec<_> =
+            commitments_kappa.iter().map(|ck| ck.to_bytes()).collect();
+        let commitments_zeta_bytes: Vec<_> =
+            commitments_zeta.iter().map(|cz| cz.to_bytes()).collect();
+
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
-            std::iter::once(params.gen2().to_bytes().as_ref())
-                .chain(std::iter::once(kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(zeta.to_bytes().as_ref()))
-                .chain(std::iter::once(verification_key.alpha.to_bytes().as_ref()))
-                .chain(beta_bytes.iter().map(|b| b.as_ref()))
-                .chain(std::iter::once(commitment_kappa.to_bytes().as_ref()))
-                .chain(std::iter::once(commitment_zeta.to_bytes().as_ref())),
+            blinded_messages_kappa_bytes
+                .iter()
+                .map(|b| b.as_ref())
+                .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(blinded_sum_C.to_bytes().as_ref()))
+                .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
+                .chain(std::iter::once(
+                    verification_key.alpha().to_bytes().as_ref(),
+                ))
+                .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
+                .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
+                .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
+                .chain(std::iter::once(commitment_C.to_bytes().as_ref())),
         );
 
         challenge == self.challenge

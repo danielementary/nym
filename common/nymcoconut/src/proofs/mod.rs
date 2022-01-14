@@ -620,7 +620,7 @@ impl ProofSpend {
     ) -> bool {
         // re-compute witnesses commitments
         // Aw = (c * kappa) + (rt * g2) + ((1 - c) * alpha) + (rm[0] * beta[0]) + ... + (rm[i] * beta[i])
-        let commitments_kappa = izip!(
+        let commitments_kappa: Vec<_> = izip!(
             blinded_messages_kappa.iter(),
             self.responses_values.iter(),
             self.responses_serial_numbers.iter(),
@@ -637,7 +637,7 @@ impl ProofSpend {
         .collect();
 
         // zeta is the public value associated with the serial number
-        let commitments_zeta = izip!(
+        let commitments_zeta: Vec<_> = izip!(
             blinded_serial_numbers_zeta.iter(),
             self.responses_serial_numbers.iter()
         )
@@ -645,12 +645,11 @@ impl ProofSpend {
         .collect();
 
         let commitment_C = blinded_sum_C * self.challenge
-            + params.gen2()
             + self
                 .responses_values
                 .iter()
                 .map(|v| params.gen2() * v)
-                .sum();
+                .sum::<G2Projective>();
 
         let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
             .iter()

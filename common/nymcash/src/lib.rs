@@ -3,7 +3,7 @@ use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature,
     CoconutError, KeyPair, Parameters, Signature, SignatureShare, VerificationKey,
-};
+}; // TODO add EcashError and review every ? and .unwrap()
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -17,6 +17,7 @@ impl ECashParams {
         pay_max: Scalar,
         voucher_max: Scalar,
     ) -> Result<ECashParams, CoconutError> {
+        //TODO add ECashError to substitute CocoNutError
         Ok(ECashParams {
             coconut_params: Parameters::new(num_attributes)?,
             pay_max,
@@ -26,15 +27,17 @@ impl ECashParams {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct Voucher {
-    pub binding_number: Scalar,
-    pub value: Scalar,
-    pub serial_number: Scalar,
-    pub info: Scalar,
+struct Voucher {
+    binding_number: Scalar,
+    value: Scalar,
+    serial_number: Scalar,
+    info: Scalar,
 }
 
+type Attributes = Vec<Scalar>;
+
 impl Voucher {
-    pub fn new(coconut_params: &Parameters, binding_number: Scalar, value: Scalar) -> Voucher {
+    fn new(coconut_params: &Parameters, binding_number: Scalar, value: Scalar) -> Voucher {
         Voucher {
             binding_number,
             value,
@@ -43,7 +46,7 @@ impl Voucher {
         }
     }
 
-    pub fn new_many(
+    fn new_many(
         coconut_params: &Parameters,
         binding_number: Scalar,
         values: &[Scalar],
@@ -54,15 +57,15 @@ impl Voucher {
             .collect()
     }
 
-    pub fn private_attributes(&self) -> Vec<Scalar> {
+    fn private_attributes(&self) -> Attributes {
         vec![self.binding_number, self.value, self.serial_number]
     }
 
-    pub fn public_attributes(&self) -> Vec<Scalar> {
+    fn public_attributes(&self) -> Attributes {
         vec![self.info]
     }
 
-    pub fn attributes(&self) -> Vec<Scalar> {
+    fn attributes(&self) -> Attributes {
         vec![
             self.binding_number,
             self.value,
@@ -71,152 +74,164 @@ impl Voucher {
         ]
     }
 
-    pub fn number_of_attributes() -> u32 {
+    fn number_of_attributes() -> u32 {
         4
     }
 }
 
-// structs that carry all the information concerning a given list of signed vouchers
-pub struct SignedVoucher {
+struct SignedVoucher {
     pub voucher: Voucher,
     pub signature: Signature,
-    pub used: bool,
 }
 
-impl SignedVoucher {
-    pub fn set_spent(&mut self) {
-        self.used = true;
-    }
-}
-
-pub struct SignedVouchersList {
-    pub signed_vouchers: Vec<SignedVoucher>,
+struct SignedVouchersList {
+    unspent_vouchers: Vec<SignedVoucher>,
+    spent_vouchers: Vec<SignedVoucher>,
 }
 
 impl SignedVouchersList {
-    pub fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> SignedVouchersList {
-        let signed_vouchers = izip!(vouchers.iter(), signatures.iter())
-            .map(|(v, s)| SignedVoucher {
-                voucher: *v,
-                signature: *s,
-                used: false,
-            })
+    fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> SignedVouchersList {
+        //TODO add ECashError and throw one if vouchers.len() != signatures.len()
+        let unspent_vouchers = izip!(vouchers.into_iter(), signatures.into_iter())
+            .map(|(voucher, signature)| SignedVoucher { voucher, signature })
             .collect();
 
-        SignedVouchersList { signed_vouchers }
+        let spent_vouchers = vec![];
+
+        SignedVouchersList {
+            unspent_vouchers,
+            spent_vouchers,
+        }
     }
 
-    // returns a list of references to signed vouchers to be spend for given values
-    pub fn find(&self, values: &[Scalar]) -> Vec<&mut SignedVoucher> {
-        let mut signed_vouchers = Vec::new();
+    // returns a list of indices of the vouchers to be spend for given values
+    // TODO add ECashError and throw one if there is not enough vouchers
+    fn find(&self, values: &[Scalar]) -> Vec<usize> {
+        let mut indices = Vec::new();
 
-        for val in values {
-            for sv in self.signed_vouchers.iter() {
-                // TODO
-                if sv.voucher.value == *val && !sv.used && !signed_vouchers.contains(&sv) {
-                    signed_vouchers.push(sv);
+        for value in values {
+            for (index, signed_voucher) in self.unspent_vouchers.iter().enumerate() {
+                if signed_voucher.voucher.value == *value && !indices.contains(&index) {
+                    indices.push(index);
                     break;
                 }
             }
         }
 
-        if signed_vouchers.len() != values.len() {
-            panic!("Could not pick vouchers for the required values");
-        }
-
-        signed_vouchers
+        indices
     }
 }
+
+type Openings = Vec<Scalar>;
 
 // returns a tuple with blind signatures requests and corresponding openings
 fn prepare_vouchers_blind_sign(
     params: &Parameters,
     vouchers: &[Voucher],
-) -> (Vec<Vec<Scalar>>, Vec<BlindSignRequest>) {
+) -> (Vec<Openings>, Vec<BlindSignRequest>) {
     vouchers
         .iter()
-        .map(|v| {
-            prepare_blind_sign(&params, &v.private_attributes(), &v.public_attributes()).unwrap()
+        .map(|voucher| {
+            prepare_blind_sign(
+                &params,
+                &voucher.private_attributes(),
+                &voucher.public_attributes(),
+            )
+            .unwrap()
         })
         .unzip()
 }
+
+type BlindedSignatureShares = Vec<BlindedSignature>;
 
 // returns the list of blinded signatures shares
 fn vouchers_blind_sign(
     params: &Parameters,
     blinded_signatures_shares_requests: &[BlindSignRequest],
-    public_attributes: &[Vec<Scalar>],
-    authorities_keypairs: &[KeyPair],
-) -> Vec<Vec<BlindedSignature>> {
-    blinded_signatures_shares_requests
-        .iter()
-        .zip(public_attributes.iter())
-        .map(|(r, pa)| {
-            authorities_keypairs
-                .iter()
-                .map(|kp| blind_sign(&params, &kp.secret_key(), &r, &pa).unwrap())
-                .collect::<Vec<BlindedSignature>>()
-        })
-        .collect()
+    vouchers_public_attributes: &[Attributes],
+    validators_key_pairs: &[KeyPair],
+) -> Vec<BlindedSignatureShares> {
+    izip!(
+        blinded_signatures_shares_requests.iter(),
+        vouchers_public_attributes.iter()
+    )
+    .map(|(request, public_attributes)| {
+        validators_key_pairs
+            .iter() // each validator issue blinded signatures for every signature share
+            .map(|key_pair| {
+                blind_sign(
+                    &params,
+                    &key_pair.secret_key(),
+                    &request,
+                    &public_attributes,
+                )
+                .unwrap()
+            })
+            .collect::<BlindedSignatureShares>()
+    })
+    .collect()
 }
+
+type SignatureShares = Vec<SignatureShare>;
 
 // return the list of unblinded signatures shares
 fn unblind_vouchers_signatures_shares(
     params: &Parameters,
-    blinded_signatures_shares: &[Vec<BlindedSignature>],
+    blinded_signatures_shares: &[BlindedSignatureShares],
     vouchers: &[Voucher],
-    blinded_signatures_shares_openings: &[Vec<Scalar>],
+    blinded_signatures_shares_openings: &[Openings],
     blinded_signatures_shares_requests: &[BlindSignRequest],
-    authorities_verification_keys: &[VerificationKey],
-) -> Vec<Vec<SignatureShare>> {
+    validators_verification_keys: &[VerificationKey],
+) -> Vec<SignatureShares> {
     izip!(
         blinded_signatures_shares.iter(),
         vouchers.iter(),
         blinded_signatures_shares_openings.iter(),
         blinded_signatures_shares_requests.iter()
     )
-    .map(|(bss, v, bss_openings, bss_request)| {
-        izip!(bss.iter(), authorities_verification_keys.iter())
-            .map(|(s, vk)| {
-                s.unblind(
+    .map(|(blinded_signature_shares, voucher, openings, request)| {
+        izip!(
+            blinded_signature_shares.iter(),
+            validators_verification_keys.iter()
+        )
+        .map(|(blinded_signature_share, validator_verification_key)| {
+            blinded_signature_share // unblind each signature share issued by each validator
+                .unblind(
                     &params,
-                    &vk,
-                    &v.private_attributes(),
-                    &v.public_attributes(),
-                    &bss_request.get_commitment_hash(),
-                    &bss_openings,
+                    &validator_verification_key,
+                    &voucher.private_attributes(),
+                    &voucher.public_attributes(),
+                    &request.get_commitment_hash(),
+                    &openings,
                 )
                 .unwrap()
-            })
-            .enumerate()
-            .map(|(idx, s)| SignatureShare::new(s, (idx + 1) as u64))
-            .collect::<Vec<SignatureShare>>()
+        })
+        .enumerate()
+        .map(|(index, signature_share)| SignatureShare::new(signature_share, (index + 1) as u64))
+        .collect::<SignatureShares>()
     })
     .collect()
 }
 
-// return vouchers signatures
+// return aggregated vouchers signatures
 fn aggregate_vouchers_signatures_shares(
     params: &Parameters,
-    signatures_shares: &[Vec<SignatureShare>],
+    signatures_shares: &[SignatureShares],
     vouchers: &[Voucher],
-    authorities_verification_key: &VerificationKey,
+    validators_verification_key: &VerificationKey,
 ) -> Vec<Signature> {
     izip!(signatures_shares.iter(), vouchers.iter())
-        .map(|(ss, v)| {
-            aggregate_signature_shares(&params, &authorities_verification_key, &v.attributes(), &ss)
-                .unwrap()
+        .map(|(signature_share, voucher)| {
+            aggregate_signature_shares(
+                &params,
+                &validators_verification_key,
+                &voucher.attributes(),
+                &signature_share,
+            )
+            .unwrap()
         })
         .collect()
 }
-
-//fn prepare_vouchers_to_be_spent(
-//    params: &Parameters,
-//    authorities_verification_key: &VerificationKey,
-//    vouchers_to_be_spent: &[&mut SignedVoucher],
-//) -> ThetaSpend{
-//    //TODO
-//}
 
 #[cfg(test)]
 mod tests {
@@ -232,21 +247,21 @@ mod tests {
 
         let params = ECashParams::new(num_attributes, pay_max, voucher_max)?;
 
-        // generate authorities keypairs
-        let authorities_keypairs = ttp_keygen(&params.coconut_params, 2, 3)?;
-        let authorities_verification_keys: Vec<VerificationKey> = authorities_keypairs
+        // generate validators keypairs
+        let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3)?;
+        let validators_verification_keys: Vec<VerificationKey> = validators_key_pairs
             .iter()
             .map(|keypair| keypair.verification_key())
             .collect();
-        let authorities_verification_key =
-            aggregate_verification_keys(&authorities_verification_keys, Some(&[1, 2, 3])).unwrap();
+        let validators_verification_key =
+            aggregate_verification_keys(&validators_verification_keys, Some(&[1, 2, 3])).unwrap();
 
         // create initial vouchers
         let binding_number = params.coconut_params.random_scalar();
         let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
 
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
-        let vouchers_public_attributes: Vec<Vec<Scalar>> =
+        let vouchers_public_attributes: Vec<Attribute> =
             vouchers.iter().map(|v| v.public_attributes()).collect();
 
         // prepare requests for initial vouchers signatures partial signatures
@@ -258,7 +273,7 @@ mod tests {
             &params.coconut_params,
             &blinded_signatures_shares_requests,
             &vouchers_public_attributes,
-            &authorities_keypairs,
+            &validators_key_pairs,
         );
 
         // unblind partial signatures
@@ -268,7 +283,7 @@ mod tests {
             &vouchers,
             &blinded_signatures_shares_openings,
             &blinded_signatures_shares_requests,
-            &authorities_verification_keys,
+            &validators_verification_keys,
         );
 
         // aggregate partial signatures
@@ -276,7 +291,7 @@ mod tests {
             &params.coconut_params,
             &signatures_shares,
             &vouchers,
-            &authorities_verification_key,
+            &validators_verification_key,
         );
 
         // bring together vouchers and corresponding signatures
@@ -291,7 +306,7 @@ mod tests {
         // prepapre proof and public attributes to verify vouchers
         let theta = prepare_vouchers_to_be_spent(
             &params.coconut_params,
-            &authorities_verification_key,
+            &validators_verification_key,
             &mut vouchers_to_be_spent,
         )?;
         let vouchers_public_attributes = vouchers_to_be_spent

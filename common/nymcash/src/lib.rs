@@ -95,7 +95,10 @@ impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
         //TODO add ECashError and throw one if vouchers.len() != signatures.len()
         let unspent_vouchers = izip!(vouchers.into_iter(), signatures.into_iter())
-            .map(|(voucher, signature)| SignedVoucher { voucher, signature })
+            .map(|(voucher, signature)| SignedVoucher {
+                voucher: *voucher,
+                signature: *signature,
+            })
             .collect();
 
         let spent_vouchers = vec![];
@@ -130,11 +133,11 @@ impl SignedVouchersList {
         let spent_vouchers = self.spent_vouchers.clone();
         let mut to_be_spent_vouchers = Vec::new();
 
-        for (index, voucher) in self.unspent_vouchers.into_iter().enumerate() {
+        for (index, voucher) in self.unspent_vouchers.iter().enumerate() {
             if indices.contains(&index) {
-                to_be_spent_vouchers.push(voucher);
+                to_be_spent_vouchers.push(*voucher);
             } else {
-                unspent_vouchers.push(voucher);
+                unspent_vouchers.push(*voucher);
             }
         }
 
@@ -328,7 +331,7 @@ mod tests {
         let to_be_spent_vouchers_indices = signed_vouchers_list.find(&values);
 
         // move vouchers from unspent to to be spent
-        signed_vouchers_list = signed_vouchers_list
+        let signed_vouchers_list = signed_vouchers_list
             .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
 
         Ok(())

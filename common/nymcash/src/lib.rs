@@ -261,7 +261,7 @@ mod tests {
         let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
 
         let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
-        let vouchers_public_attributes: Vec<Attribute> =
+        let vouchers_public_attributes: Vec<Attributes> =
             vouchers.iter().map(|v| v.public_attributes()).collect();
 
         // prepare requests for initial vouchers signatures partial signatures
@@ -301,18 +301,7 @@ mod tests {
         let values = vec![Scalar::from(10), Scalar::from(10)];
 
         // find vouchers to be spent
-        let vouchers_to_be_spent = vouchers_list.find(&values)?;
-
-        // prepapre proof and public attributes to verify vouchers
-        let theta = prepare_vouchers_to_be_spent(
-            &params.coconut_params,
-            &validators_verification_key,
-            &mut vouchers_to_be_spent,
-        )?;
-        let vouchers_public_attributes = vouchers_to_be_spent
-            .iter()
-            .map(|v| v.public_attributes())
-            .collect();
+        let vouchers_to_be_spent = signed_vouchers_list.find(&values);
 
         Ok(())
     }

@@ -79,28 +79,32 @@ impl Voucher {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 struct SignedVoucher {
-    pub voucher: Voucher,
-    pub signature: Signature,
+    voucher: Voucher,
+    signature: Signature,
 }
 
 struct SignedVouchersList {
-    unspent_vouchers: Vec<SignedVoucher>,
-    spent_vouchers: Vec<SignedVoucher>,
+    unspent_vouchers: Vec<SignedVoucher>, // vouchers that have not yet been spent
+    spent_vouchers: Vec<SignedVoucher>,   // voucher that have already been spent
+    to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for voucher before they are spent
 }
 
 impl SignedVouchersList {
-    fn new(vouchers: Vec<Voucher>, signatures: Vec<Signature>) -> SignedVouchersList {
+    fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
         //TODO add ECashError and throw one if vouchers.len() != signatures.len()
         let unspent_vouchers = izip!(vouchers.into_iter(), signatures.into_iter())
             .map(|(voucher, signature)| SignedVoucher { voucher, signature })
             .collect();
 
         let spent_vouchers = vec![];
+        let to_be_spent_vouchers = vec![];
 
         SignedVouchersList {
             unspent_vouchers,
             spent_vouchers,
+            to_be_spent_vouchers,
         }
     }
 
@@ -119,6 +123,26 @@ impl SignedVouchersList {
         }
 
         indices
+    }
+
+    fn move_vouchers_from_unspent_to_to_be_spent(&self, indices: &[usize]) -> Self {
+        let mut unspent_vouchers = Vec::new();
+        let spent_vouchers = self.spent_vouchers.clone();
+        let mut to_be_spent_vouchers = Vec::new();
+
+        for (index, voucher) in self.unspent_vouchers.into_iter().enumerate() {
+            if indices.contains(&index) {
+                to_be_spent_vouchers.push(voucher);
+            } else {
+                unspent_vouchers.push(voucher);
+            }
+        }
+
+        SignedVouchersList {
+            unspent_vouchers,
+            spent_vouchers,
+            to_be_spent_vouchers,
+        }
     }
 }
 
@@ -295,13 +319,17 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let signed_vouchers_list = SignedVouchersList::new(vouchers, signatures);
+        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
 
         // values to be spent
         let values = vec![Scalar::from(10), Scalar::from(10)];
 
         // find vouchers to be spent
-        let vouchers_to_be_spent = signed_vouchers_list.find(&values);
+        let to_be_spent_vouchers_indices = signed_vouchers_list.find(&values);
+
+        // move vouchers from unspent to to be spent
+        signed_vouchers_list = signed_vouchers_list
+            .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
 
         Ok(())
     }

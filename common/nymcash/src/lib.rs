@@ -151,10 +151,17 @@ impl SignedVouchersList {
     }
 
     fn randomise_and_prove_to_be_spent_vouchers(
-        &self,
+        &mut self,
         coconut_params: &Parameters,
         validator_verification_key: &VerificationKey,
+        values: &[Scalar],
     ) -> ThetaAndInfos {
+        // find vouchers to be spent
+        let to_be_spent_vouchers_indices = self.find(&values);
+
+        // move vouchers from unspent to to be spent
+        self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
         let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
         let (values, serial_numbers): (Vec<Scalar>, Vec<Scalar>) = self
             .to_be_spent_vouchers
@@ -393,21 +400,18 @@ mod tests {
         // values to be spent
         let values = vec![Scalar::from(10), Scalar::from(10)];
 
-        // find vouchers to be spent
-        let to_be_spent_vouchers_indices = signed_vouchers_list.find(&values);
-
-        // move vouchers from unspent to to be spent
-        signed_vouchers_list
-            .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
-
+        // user randomises her vouchers and generates the proof to spend them
         let proof_to_spend = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
             &params.coconut_params,
             &validators_verification_key,
+            &values,
         );
 
+        // entity a with the validators verification key accepts the proof if valid
         let proof_accepted =
             proof_to_spend.verify(&params.coconut_params, &validators_verification_key);
 
+        // user mark her vouchers as spent if accepted by entity a
         if proof_accepted {
             signed_vouchers_list.confirm_vouchers_spent();
         }

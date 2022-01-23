@@ -183,7 +183,7 @@ impl Bytable for ThetaSpend {
 
 impl Base58 for ThetaSpend {}
 
-pub fn prove_bandwidth_credential(
+pub fn randomise_and_prove_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
     binding_number: &Scalar,
@@ -253,7 +253,7 @@ pub fn prove_bandwidth_credential(
     })
 }
 
-pub fn verify_credential(
+pub fn verify_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
     theta: &ThetaSpend,

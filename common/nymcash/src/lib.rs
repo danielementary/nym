@@ -1,8 +1,9 @@
 use bls12_381::Scalar;
 use itertools::izip;
 use nymcoconut::{
-    aggregate_signature_shares, blind_sign, prepare_blind_sign, BlindSignRequest, BlindedSignature,
-    CoconutError, KeyPair, Parameters, Signature, SignatureShare, VerificationKey,
+    aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_prove_vouchers,
+    verify_vouchers, BlindSignRequest, BlindedSignature, CoconutError, KeyPair, Parameters,
+    Signature, SignatureShare, ThetaSpend, VerificationKey,
 }; // TODO add EcashError and review every ? and .unwrap()
 
 pub struct ECashParams {
@@ -91,6 +92,11 @@ struct SignedVouchersList {
     to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for voucher before they are spent
 }
 
+struct ThetaAndInfos {
+    theta: ThetaSpend,
+    infos: Attributes,
+}
+
 impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
         //TODO add ECashError and throw one if vouchers.len() != signatures.len()
@@ -128,9 +134,8 @@ impl SignedVouchersList {
         indices
     }
 
-    fn move_vouchers_from_unspent_to_to_be_spent(&self, indices: &[usize]) -> Self {
+    fn move_vouchers_from_unspent_to_to_be_spent(&mut self, indices: &[usize]) {
         let mut unspent_vouchers = Vec::new();
-        let spent_vouchers = self.spent_vouchers.clone();
         let mut to_be_spent_vouchers = Vec::new();
 
         for (index, voucher) in self.unspent_vouchers.iter().enumerate() {
@@ -141,11 +146,72 @@ impl SignedVouchersList {
             }
         }
 
-        SignedVouchersList {
-            unspent_vouchers,
-            spent_vouchers,
-            to_be_spent_vouchers,
+        self.unspent_vouchers = unspent_vouchers;
+        self.to_be_spent_vouchers = to_be_spent_vouchers;
+    }
+
+    fn randomise_and_prove_to_be_spent_vouchers(
+        &self,
+        coconut_params: &Parameters,
+        validator_verification_key: &VerificationKey,
+    ) -> ThetaAndInfos {
+        let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
+        let (values, serial_numbers): (Vec<Scalar>, Vec<Scalar>) = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| {
+                (
+                    signed_voucher.voucher.value,
+                    signed_voucher.voucher.serial_number,
+                )
+            })
+            .unzip();
+        let signatures: Vec<Signature> = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.signature)
+            .collect();
+
+        let theta = randomise_and_prove_vouchers(
+            coconut_params,
+            validator_verification_key,
+            &binding_number,
+            &values,
+            &serial_numbers,
+            &signatures,
+        )
+        .unwrap();
+        let infos: Attributes = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.voucher.info)
+            .collect();
+
+        ThetaAndInfos { theta, infos }
+    }
+
+    fn confirm_vouchers_spent(&mut self) {
+        for voucher in self.to_be_spent_vouchers.iter() {
+            self.spent_vouchers.push(*voucher);
         }
+
+        self.to_be_spent_vouchers.clear();
+    }
+}
+
+impl ThetaAndInfos {
+    // return true if the vouchers are accepted, false otherwise
+    fn verify(
+        &self,
+        coconut_params: &Parameters,
+        validators_verification_key: &VerificationKey,
+    ) -> bool {
+        verify_vouchers(
+            coconut_params,
+            validators_verification_key,
+            &self.theta,
+            &self.infos,
+        )
     }
 }
 
@@ -322,7 +388,7 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+        let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
 
         // values to be spent
         let values = vec![Scalar::from(10), Scalar::from(10)];
@@ -331,8 +397,20 @@ mod tests {
         let to_be_spent_vouchers_indices = signed_vouchers_list.find(&values);
 
         // move vouchers from unspent to to be spent
-        let signed_vouchers_list = signed_vouchers_list
+        signed_vouchers_list
             .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
+        let proof_to_spend = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
+            &params.coconut_params,
+            &validators_verification_key,
+        );
+
+        let proof_accepted =
+            proof_to_spend.verify(&params.coconut_params, &validators_verification_key);
+
+        if proof_accepted {
+            signed_vouchers_list.confirm_vouchers_spent();
+        }
 
         Ok(())
     }

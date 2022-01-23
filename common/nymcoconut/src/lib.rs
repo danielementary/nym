@@ -22,6 +22,8 @@ pub use scheme::setup::Parameters;
 pub use scheme::verification::prove_bandwidth_credential;
 pub use scheme::verification::verify_credential;
 pub use scheme::verification::Theta;
+pub use scheme::verification_spend::randomise_and_prove_vouchers;
+pub use scheme::verification_spend::verify_vouchers;
 pub use scheme::verification_spend::ThetaSpend;
 pub use scheme::BlindedSignature;
 pub use scheme::Signature;

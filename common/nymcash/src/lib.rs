@@ -27,18 +27,20 @@ impl ECashParams {
     }
 }
 
+type Attribute = Scalar;
+
 #[derive(Debug, Copy, Clone)]
 struct Voucher {
-    binding_number: Scalar,
-    value: Scalar,
-    serial_number: Scalar,
-    info: Scalar,
+    binding_number: Attribute,
+    value: Attribute,
+    serial_number: Attribute,
+    info: Attribute,
 }
 
-type Attributes = Vec<Scalar>;
+type Attributes = Vec<Attribute>;
 
 impl Voucher {
-    fn new(coconut_params: &Parameters, binding_number: Scalar, value: Scalar) -> Voucher {
+    fn new(coconut_params: &Parameters, binding_number: Attribute, value: Attribute) -> Voucher {
         Voucher {
             binding_number,
             value,
@@ -49,8 +51,8 @@ impl Voucher {
 
     fn new_many(
         coconut_params: &Parameters,
-        binding_number: Scalar,
-        values: &[Scalar],
+        binding_number: Attribute,
+        values: &[Attribute],
     ) -> Vec<Voucher> {
         values
             .iter()
@@ -119,7 +121,7 @@ impl SignedVouchersList {
 
     // returns a list of indices of the vouchers to be spend for given values
     // TODO add ECashError and throw one if there is not enough vouchers
-    fn find(&self, values: &[Scalar]) -> Vec<usize> {
+    fn find(&self, values: &[Attribute]) -> Vec<usize> {
         let mut indices = Vec::new();
 
         for value in values {
@@ -154,7 +156,7 @@ impl SignedVouchersList {
         &mut self,
         coconut_params: &Parameters,
         validator_verification_key: &VerificationKey,
-        values: &[Scalar],
+        values: &[Attribute],
     ) -> ThetaAndInfos {
         // find vouchers to be spent
         let to_be_spent_vouchers_indices = self.find(&values);
@@ -163,7 +165,7 @@ impl SignedVouchersList {
         self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
 
         let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
-        let (values, serial_numbers): (Vec<Scalar>, Vec<Scalar>) = self
+        let (values, serial_numbers): (Attributes, Attributes) = self
             .to_be_spent_vouchers
             .iter()
             .map(|signed_voucher| {

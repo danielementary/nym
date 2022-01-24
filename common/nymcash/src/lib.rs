@@ -2,9 +2,9 @@ use bls12_381::Scalar;
 use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_prove_vouchers,
-    verify_vouchers, BlindSignRequest, BlindedSignature, CoconutError, KeyPair, Parameters,
-    Signature, SignatureShare, ThetaSpend, VerificationKey,
-}; // TODO add EcashError and review every ? and .unwrap()
+    verify_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters, Signature,
+    SignatureShare, ThetaSpend, VerificationKey,
+};
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -13,17 +13,12 @@ pub struct ECashParams {
 }
 
 impl ECashParams {
-    pub fn new(
-        num_attributes: u32,
-        pay_max: Scalar,
-        voucher_max: Scalar,
-    ) -> Result<ECashParams, CoconutError> {
-        //TODO add ECashError to substitute CocoNutError
-        Ok(ECashParams {
-            coconut_params: Parameters::new(num_attributes)?,
+    pub fn new(num_attributes: u32, pay_max: Scalar, voucher_max: Scalar) -> ECashParams {
+        ECashParams {
+            coconut_params: Parameters::new(num_attributes).unwrap(),
             pay_max,
             voucher_max,
-        })
+        }
     }
 }
 
@@ -101,7 +96,6 @@ struct ThetaAndInfos {
 
 impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
-        //TODO add ECashError and throw one if vouchers.len() != signatures.len()
         let unspent_vouchers = izip!(vouchers.into_iter(), signatures.into_iter())
             .map(|(voucher, signature)| SignedVoucher {
                 voucher: *voucher,
@@ -120,7 +114,6 @@ impl SignedVouchersList {
     }
 
     // returns a list of indices of the vouchers to be spend for given values
-    // TODO add ECashError and throw one if there is not enough vouchers
     fn find(&self, values: &[Attribute]) -> Vec<usize> {
         let mut indices = Vec::new();
 
@@ -341,16 +334,16 @@ mod tests {
     use nymcoconut::{aggregate_verification_keys, ttp_keygen};
 
     #[test]
-    fn e2e() -> Result<(), CoconutError> {
+    fn e2e() {
         // define e-cash parameters
         let num_attributes = Voucher::number_of_attributes();
         let pay_max = Scalar::from(10);
         let voucher_max = Scalar::from(10);
 
-        let params = ECashParams::new(num_attributes, pay_max, voucher_max)?;
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
 
         // generate validators keypairs
-        let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3)?;
+        let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3).unwrap();
         let validators_verification_keys: Vec<VerificationKey> = validators_key_pairs
             .iter()
             .map(|keypair| keypair.verification_key())
@@ -417,7 +410,5 @@ mod tests {
         if proof_accepted {
             signed_vouchers_list.confirm_vouchers_spent();
         }
-
-        Ok(())
     }
 }

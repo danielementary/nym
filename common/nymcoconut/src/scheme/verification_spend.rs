@@ -263,6 +263,8 @@ pub fn verify_vouchers(
         return false;
     }
 
+    // assert!(theta.verify_proof(params, verification_key));
+    // TODO debug proof
     if !theta.verify_proof(params, verification_key) {
         return false;
     }
@@ -284,7 +286,7 @@ pub fn verify_vouchers(
             return false;
         }
 
-        if !bool::from(vs.0.is_identity()) {
+        if bool::from(vs.0.is_identity()) {
             return false;
         }
     }

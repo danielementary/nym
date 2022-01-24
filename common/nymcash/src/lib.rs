@@ -406,6 +406,8 @@ mod tests {
         let proof_accepted =
             proof_to_spend.verify(&params.coconut_params, &validators_verification_key);
 
+        assert!(proof_accepted);
+
         // user mark her vouchers as spent if accepted by entity a
         if proof_accepted {
             signed_vouchers_list.confirm_vouchers_spent();

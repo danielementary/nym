@@ -908,4 +908,76 @@ mod tests {
         let proof_from_bytes = ProofKappaZeta::from_bytes(&proof_bytes).unwrap();
         assert_eq!(proof_from_bytes, pi_v);
     }
+
+    #[test]
+    fn proof_spend_bytes_roundtrip() {
+        let params = setup(4).unwrap();
+
+        let keypair = keygen(&params);
+        let verification_key = keypair.verification_key();
+
+        // 1 voucher
+        let number_of_vouchers_spent = 1;
+        let binding_number = params.random_scalar();
+        let values = [Scalar::from(10)];
+        let serial_numbers = params.n_random_scalars(1);
+        let signatures_blinding_factors = params.n_random_scalars(1);
+        let blinded_messages_kappa = [params.gen2() * params.random_scalar()];
+        let blinded_serial_numbers_zeta = [params.gen2() * params.random_scalar()];
+        let blinded_sum_c = params.gen2() * params.random_scalar();
+
+        let pi_v = ProofSpend::construct(
+            &params,
+            &verification_key,
+            number_of_vouchers_spent,
+            &binding_number,
+            &values,
+            &serial_numbers,
+            &signatures_blinding_factors,
+            &blinded_messages_kappa,
+            &blinded_serial_numbers_zeta,
+            &blinded_sum_c,
+        );
+
+        let proof_bytes = pi_v.to_bytes();
+        let proof_from_bytes = ProofSpend::from_bytes(&proof_bytes).unwrap();
+
+        assert_eq!(proof_from_bytes, pi_v);
+
+        // 3 vouchers
+        let number_of_vouchers_spent = 3;
+        let binding_number = params.random_scalar();
+        let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
+        let serial_numbers = params.n_random_scalars(3);
+        let signatures_blinding_factors = params.n_random_scalars(3);
+        let blinded_messages_kappa = [
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+        ];
+        let blinded_serial_numbers_zeta = [
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+        ];
+        let blinded_sum_c = params.gen2() * params.random_scalar();
+
+        let pi_v = ProofSpend::construct(
+            &params,
+            &verification_key,
+            number_of_vouchers_spent,
+            &binding_number,
+            &values,
+            &serial_numbers,
+            &signatures_blinding_factors,
+            &blinded_messages_kappa,
+            &blinded_serial_numbers_zeta,
+            &blinded_sum_c,
+        );
+
+        let proof_bytes = pi_v.to_bytes();
+        let proof_from_bytes = ProofSpend::from_bytes(&proof_bytes).unwrap();
+
+        assert_eq!(proof_from_bytes, pi_v);
+    }
 }

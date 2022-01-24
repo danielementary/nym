@@ -341,7 +341,7 @@ mod tests {
     use nymcoconut::{aggregate_verification_keys, ttp_keygen};
 
     #[test]
-    fn main() -> Result<(), CoconutError> {
+    fn e2e() -> Result<(), CoconutError> {
         // define e-cash parameters
         let num_attributes = Voucher::number_of_attributes();
         let pay_max = Scalar::from(10);

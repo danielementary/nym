@@ -294,33 +294,74 @@ pub fn verify_vouchers(
 
 #[cfg(test)]
 mod tests {
-    // use crate::scheme::keygen::keygen;
-    // use crate::scheme::setup::setup;
+    use crate::scheme::keygen::keygen;
+    use crate::scheme::setup::setup;
 
-    // use super::*;
+    use super::*;
 
-    // #[test]
-    // fn theta_bytes_roundtrip() {
-    //     let mut params = setup(2).unwrap();
+    #[test]
+    fn theta_bytes_roundtrip() {
+        let params = setup(4).unwrap();
 
-    //     let keypair = keygen(&mut params);
-    //     let r = params.random_scalar();
-    //     let s = params.random_scalar();
+        let keypair = keygen(&params);
+        let verification_key = keypair.verification_key();
 
-    //     let signature = Signature(params.gen1() * r, params.gen1() * s);
-    //     let serial_number = params.random_scalar();
-    //     let binding_number = params.random_scalar();
+        let binding_number = params.random_scalar();
 
-    //     let theta = prove_bandwidth_credential(
-    //         &mut params,
-    //         &keypair.verification_key(),
-    //         &signature,
-    //         serial_number,
-    //         binding_number,
-    //     )
-    //     .unwrap();
+        // test one voucher
+        let values = [Scalar::from(10)];
+        let serial_numbers = [params.random_scalar()];
+        let signatures = [Signature(
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+        )];
 
-    //     let bytes = theta.to_bytes();
-    //     assert_eq!(Theta::try_from(bytes.as_slice()).unwrap(), theta);
-    // }
+        let theta = randomise_and_prove_vouchers(
+            &params,
+            &verification_key,
+            &binding_number,
+            &values,
+            &serial_numbers,
+            &signatures,
+        )
+        .unwrap();
+
+        let bytes = theta.to_bytes();
+        assert_eq!(ThetaSpend::try_from(bytes.as_slice()).unwrap(), theta);
+
+        // test three vouchers
+        let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
+        let serial_numbers = [
+            params.random_scalar(),
+            params.random_scalar(),
+            params.random_scalar(),
+        ];
+        let signatures = [
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+        ];
+
+        let theta = randomise_and_prove_vouchers(
+            &params,
+            &verification_key,
+            &binding_number,
+            &values,
+            &serial_numbers,
+            &signatures,
+        )
+        .unwrap();
+
+        let bytes = theta.to_bytes();
+        assert_eq!(ThetaSpend::try_from(bytes.as_slice()).unwrap(), theta);
+    }
 }

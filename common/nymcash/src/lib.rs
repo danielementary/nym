@@ -1,10 +1,18 @@
-use bls12_381::Scalar;
+use bls12_381::{G2Projective, Scalar};
 use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_prove_vouchers,
     verify_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters, Signature,
     SignatureShare, ThetaSpend, VerificationKey,
 };
+
+type Attribute = Scalar;
+type Attributes = Vec<Attribute>;
+
+type Openings = Vec<Scalar>;
+
+type BlindedSignatureShares = Vec<BlindedSignature>;
+type SignatureShares = Vec<SignatureShare>;
 
 pub struct ECashParams {
     pub coconut_params: Parameters,
@@ -22,8 +30,6 @@ impl ECashParams {
     }
 }
 
-type Attribute = Scalar;
-
 #[derive(Debug, Copy, Clone)]
 struct Voucher {
     binding_number: Attribute,
@@ -31,8 +37,6 @@ struct Voucher {
     serial_number: Attribute,
     info: Attribute,
 }
-
-type Attributes = Vec<Attribute>;
 
 impl Voucher {
     fn new(coconut_params: &Parameters, binding_number: Attribute, value: Attribute) -> Voucher {
@@ -183,6 +187,7 @@ impl SignedVouchersList {
             &signatures,
         )
         .unwrap();
+
         let infos: Attributes = self
             .to_be_spent_vouchers
             .iter()
@@ -207,17 +212,72 @@ impl ThetaAndInfos {
         &self,
         coconut_params: &Parameters,
         validators_verification_key: &VerificationKey,
+        bulletin_board: &mut BulletinBoard,
+        values: &[Scalar],
     ) -> bool {
-        verify_vouchers(
+        let double_spending_tags = &self.theta.blinded_serial_numbers;
+        if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags) {
+            return false;
+        }
+
+        let c: G2Projective = values
+            .iter()
+            .map(|value| coconut_params.gen2() * value)
+            .sum();
+        if c != self.theta.blinded_spent_amount {
+            return false;
+        }
+
+        if !verify_vouchers(
             coconut_params,
             validators_verification_key,
             &self.theta,
             &self.infos,
-        )
+        ) {
+            return false;
+        }
+
+        bulletin_board.add_tags(&double_spending_tags);
+
+        true
     }
 }
 
-type Openings = Vec<Scalar>;
+struct BulletinBoard {
+    double_spending_tags: Vec<G2Projective>,
+}
+
+impl BulletinBoard {
+    fn new() -> Self {
+        BulletinBoard {
+            double_spending_tags: vec![],
+        }
+    }
+
+    fn check_valid_double_spending_tag(&self, tag: &G2Projective) -> bool {
+        !self.double_spending_tags.contains(tag)
+    }
+
+    fn check_valid_double_spending_tags(&self, tags: &[G2Projective]) -> bool {
+        for tag in tags {
+            if !self.check_valid_double_spending_tag(&tag) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn add_tag(&mut self, tag: &G2Projective) {
+        self.double_spending_tags.push(*tag);
+    }
+
+    fn add_tags(&mut self, tags: &[G2Projective]) {
+        for tag in tags {
+            self.add_tag(tag);
+        }
+    }
+}
 
 // returns a tuple with blind signatures requests and corresponding openings
 fn prepare_vouchers_blind_sign(
@@ -236,8 +296,6 @@ fn prepare_vouchers_blind_sign(
         })
         .unzip()
 }
-
-type BlindedSignatureShares = Vec<BlindedSignature>;
 
 // returns the list of blinded signatures shares
 fn vouchers_blind_sign(
@@ -266,8 +324,6 @@ fn vouchers_blind_sign(
     })
     .collect()
 }
-
-type SignatureShares = Vec<SignatureShare>;
 
 // return the list of unblinded signatures shares
 fn unblind_vouchers_signatures_shares(
@@ -341,6 +397,7 @@ mod tests {
         let voucher_max = Scalar::from(10);
 
         let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+        let mut bulletin_board = BulletinBoard::new();
 
         // generate validators keypairs
         let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3).unwrap();
@@ -393,7 +450,7 @@ mod tests {
         let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
 
         // values to be spent
-        let values = vec![Scalar::from(10), Scalar::from(10)];
+        let values = vec![Scalar::from(10); 3];
 
         // user randomises her vouchers and generates the proof to spend them
         let proof_to_spend = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
@@ -403,8 +460,12 @@ mod tests {
         );
 
         // entity a with the validators verification key accepts the proof if valid
-        let proof_accepted =
-            proof_to_spend.verify(&params.coconut_params, &validators_verification_key);
+        let proof_accepted = proof_to_spend.verify(
+            &params.coconut_params,
+            &validators_verification_key,
+            &mut bulletin_board,
+            &values,
+        );
 
         assert!(proof_accepted);
 

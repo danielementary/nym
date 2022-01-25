@@ -48,7 +48,8 @@ impl Parameters {
         &self.g1
     }
 
-    pub(crate) fn gen2(&self) -> &G2Affine {
+    // pub(crate) fn gen2(&self) -> &G2Affine {
+    pub fn gen2(&self) -> &G2Affine {
         &self.g2
     }
 

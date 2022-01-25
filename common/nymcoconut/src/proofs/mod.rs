@@ -536,8 +536,8 @@ impl ProofSpend {
             witnesses_signatures_blinding_factors.iter()
         )
         .map(|(v, sn, b)| {
-            verification_key.alpha
-                + verification_key.beta_g2()[0] * binding_number
+            verification_key.alpha()
+                + verification_key.beta_g2()[0] * witness_binding_number
                 + verification_key.beta_g2()[1] * v
                 + verification_key.beta_g2()[2] * sn
                 + params.gen2() * b

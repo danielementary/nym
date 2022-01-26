@@ -40,7 +40,7 @@ struct Voucher {
 
 impl Voucher {
     fn new(coconut_params: &Parameters, binding_number: Attribute, value: Attribute) -> Voucher {
-        Voucher {
+        Self {
             binding_number,
             value,
             serial_number: coconut_params.random_scalar(),
@@ -50,12 +50,12 @@ impl Voucher {
 
     fn new_many(
         coconut_params: &Parameters,
-        binding_number: Attribute,
+        binding_number: &Attribute,
         values: &[Attribute],
-    ) -> Vec<Voucher> {
+    ) -> Vec<Self> {
         values
             .iter()
-            .map(|v| Voucher::new(coconut_params, binding_number, *v))
+            .map(|v| Voucher::new(coconut_params, *binding_number, *v))
             .collect()
     }
 
@@ -423,7 +423,7 @@ mod tests {
         let binding_number = params.coconut_params.random_scalar();
         let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
 
-        let vouchers = Voucher::new_many(&params.coconut_params, binding_number, &values);
+        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
         let vouchers_public_attributes: Vec<Attributes> =
             vouchers.iter().map(|v| v.public_attributes()).collect();
 
@@ -564,5 +564,216 @@ mod tests {
                 && signed_vouchers_list.to_be_spent_vouchers.len() == 0
                 && signed_vouchers_list.spent_vouchers.len() == 5
         );
+    }
+
+    #[test]
+    fn test_signed_vouchers_list_find_empty_vouchers() {
+        let vouchers = vec![];
+        let signatures = vec![];
+
+        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+
+        let values = vec![];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+    }
+
+    #[test]
+    fn test_signed_vouchers_list_find_one_voucher() {
+        // define e-cash parameters
+        let num_attributes = Voucher::number_of_attributes();
+        let pay_max = Scalar::from(10);
+        let voucher_max = Scalar::from(10);
+
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+
+        let number_of_vouchers = 1;
+
+        let binding_number = params.coconut_params.random_scalar();
+        let values = [Scalar::from(10)];
+
+        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
+        let signatures: Vec<Signature> = (0..number_of_vouchers)
+            .map(|_| {
+                Signature(
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                )
+            })
+            .collect();
+
+        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+
+        let values = vec![];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0]);
+
+        let values = vec![Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+    }
+
+    #[test]
+    fn test_signed_vouchers_list_find_three_equal_vouchers() {
+        // define e-cash parameters
+        let num_attributes = Voucher::number_of_attributes();
+        let pay_max = Scalar::from(10);
+        let voucher_max = Scalar::from(10);
+
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+
+        let number_of_vouchers = 3;
+
+        let binding_number = params.coconut_params.random_scalar();
+        let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
+
+        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
+        let signatures: Vec<Signature> = (0..number_of_vouchers)
+            .map(|_| {
+                Signature(
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                )
+            })
+            .collect();
+
+        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+
+        let values = vec![];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0]);
+
+        let values = vec![Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0, 1]);
+
+        let values = vec![Scalar::from(5), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(5), Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0, 1, 2]);
+
+        let values = vec![Scalar::from(5), Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(5), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![
+            Scalar::from(10),
+            Scalar::from(10),
+            Scalar::from(10),
+            Scalar::from(10),
+        ];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+    }
+
+    #[test]
+    fn test_signed_vouchers_list_find_three_vouchers() {
+        // define e-cash parameters
+        let num_attributes = Voucher::number_of_attributes();
+        let pay_max = Scalar::from(10);
+        let voucher_max = Scalar::from(10);
+
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+
+        let number_of_vouchers = 3;
+
+        let binding_number = params.coconut_params.random_scalar();
+        let values = [Scalar::from(10), Scalar::from(5), Scalar::from(10)];
+
+        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
+        let signatures: Vec<Signature> = (0..number_of_vouchers)
+            .map(|_| {
+                Signature(
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+                )
+            })
+            .collect();
+
+        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+
+        let values = vec![];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
+
+        let values = vec![Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0]);
+
+        let values = vec![Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![1]);
+
+        let values = vec![Scalar::from(10), Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0, 1]);
+
+        let values = vec![Scalar::from(5), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![1, 0]);
+
+        let values = vec![Scalar::from(10), Scalar::from(5), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0, 1, 2]);
+
+        let values = vec![Scalar::from(5), Scalar::from(10), Scalar::from(10)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![1, 0, 2]);
+
+        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(5)];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices, vec![0, 2, 1]);
+
+        let values = vec![
+            Scalar::from(10),
+            Scalar::from(5),
+            Scalar::from(10),
+            Scalar::from(5),
+        ];
+        let indices = signed_vouchers_list.find(&values);
+        assert_eq!(indices.len(), 0);
     }
 }

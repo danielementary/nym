@@ -130,7 +130,12 @@ impl SignedVouchersList {
             }
         }
 
-        indices
+        // if we have not find vouchers for every value, return an empty vec
+        if indices.len() == values.len() {
+            indices
+        } else {
+            vec![]
+        }
     }
 
     fn move_vouchers_from_unspent_to_to_be_spent(&mut self, indices: &[usize]) {
@@ -160,6 +165,8 @@ impl SignedVouchersList {
 
         // move vouchers from unspent to to be spent
         self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
+        assert!(self.to_be_spent_vouchers.len() > 0);
 
         let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
         let (values, serial_numbers): (Attributes, Attributes) = self
@@ -215,11 +222,13 @@ impl ThetaAndInfos {
         bulletin_board: &mut BulletinBoard,
         values: &[Scalar],
     ) -> bool {
+        // check double spending
         let double_spending_tags = &self.theta.blinded_serial_numbers;
         if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags) {
             return false;
         }
 
+        // check committed amount
         let c: G2Projective = values
             .iter()
             .map(|value| coconut_params.gen2() * value)
@@ -228,6 +237,7 @@ impl ThetaAndInfos {
             return false;
         }
 
+        // check vouchers
         if !verify_vouchers(
             coconut_params,
             validators_verification_key,
@@ -237,6 +247,7 @@ impl ThetaAndInfos {
             return false;
         }
 
+        // add double_spending_tags to bulletin board
         bulletin_board.add_tags(&double_spending_tags);
 
         true
@@ -449,29 +460,109 @@ mod tests {
         // bring together vouchers and corresponding signatures
         let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
 
+        // check we actually have 5 unspent vouchers
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 5
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 0
+        );
+
         // values to be spent
-        let values = vec![Scalar::from(10); 3];
+        let values_30 = vec![Scalar::from(10); 3];
 
         // user randomises her vouchers and generates the proof to spend them
-        let proof_to_spend = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
+        let proof_to_spend_30 = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
             &params.coconut_params,
             &validators_verification_key,
-            &values,
+            &values_30,
+        );
+
+        // check 3 vouchers are move to be spent
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 2
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 3
+                && signed_vouchers_list.spent_vouchers.len() == 0
         );
 
         // entity a with the validators verification key accepts the proof if valid
-        let proof_accepted = proof_to_spend.verify(
+        let proof_to_spend_30_accepted = proof_to_spend_30.verify(
             &params.coconut_params,
             &validators_verification_key,
             &mut bulletin_board,
-            &values,
+            &values_30,
         );
 
-        assert!(proof_accepted);
-
         // user mark her vouchers as spent if accepted by entity a
-        if proof_accepted {
+        if proof_to_spend_30_accepted {
             signed_vouchers_list.confirm_vouchers_spent();
         }
+
+        // check the proof is accepted and vouchers are moved to spent
+        assert!(
+            proof_to_spend_30_accepted
+                && signed_vouchers_list.unspent_vouchers.len() == 2
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 3
+        );
+
+        // reuse a proof
+        let reused_proof_to_spend_30_accepted = proof_to_spend_30.verify(
+            &params.coconut_params,
+            &validators_verification_key,
+            &mut bulletin_board,
+            &values_30,
+        );
+
+        // check this is not accepted
+        assert!(!reused_proof_to_spend_30_accepted);
+
+        // values to be spent
+        let values_20 = vec![Scalar::from(10); 2];
+
+        // user randomises her vouchers and generates the proof to spend them
+        let proof_to_spend_20 = signed_vouchers_list.randomise_and_prove_to_be_spent_vouchers(
+            &params.coconut_params,
+            &validators_verification_key,
+            &values_20,
+        );
+
+        // check 2 vouchers are move to be spent
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 0
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 2
+                && signed_vouchers_list.spent_vouchers.len() == 3
+        );
+
+        // use proof to spend 20 to spend 30
+        let proof_to_spend_20_accepted_for_30 = proof_to_spend_20.verify(
+            &params.coconut_params,
+            &validators_verification_key,
+            &mut bulletin_board,
+            &values_30,
+        );
+
+        // check this is not accpeted
+        assert!(!proof_to_spend_20_accepted_for_30);
+
+        // entity a with the validators verification key accepts the proof if valid
+        let proof_to_spend_20_accepted = proof_to_spend_20.verify(
+            &params.coconut_params,
+            &validators_verification_key,
+            &mut bulletin_board,
+            &values_20,
+        );
+
+        // user mark her vouchers as spent if accepted by entity a
+        if proof_to_spend_20_accepted {
+            signed_vouchers_list.confirm_vouchers_spent();
+        }
+
+        // check the proof is accepted and vouchers are moved to spent
+        assert!(
+            proof_to_spend_20_accepted
+                && signed_vouchers_list.unspent_vouchers.len() == 0
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 5
+        );
     }
 }

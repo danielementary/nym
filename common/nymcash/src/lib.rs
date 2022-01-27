@@ -93,7 +93,7 @@ struct SignedVouchersList {
     to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for voucher before they are spent
 }
 
-struct ThetaAndInfos {
+struct ThetaSpendAndInfos {
     theta: ThetaSpend,
     infos: Attributes,
 }
@@ -159,7 +159,7 @@ impl SignedVouchersList {
         coconut_params: &Parameters,
         validator_verification_key: &VerificationKey,
         values: &[Attribute],
-    ) -> ThetaAndInfos {
+    ) -> ThetaSpendAndInfos {
         // find vouchers to be spent
         let to_be_spent_vouchers_indices = self.find(&values);
 
@@ -201,7 +201,51 @@ impl SignedVouchersList {
             .map(|signed_voucher| signed_voucher.voucher.info)
             .collect();
 
-        ThetaAndInfos { theta, infos }
+        ThetaSpendAndInfos { theta, infos }
+    }
+
+    // TODO: return openings and blindsignrequests
+    fn prepare_request_vouchers_blind_sign(
+        &mut self,
+        coconut_params: &Parameters,
+        validator_verification_key: &VerificationKey,
+        pay: &Scalar,
+        to_be_spent_values: &[Attribute],
+        to_be_issued_values: &[Attribute],
+    ) {
+        // find vouchers to be spent
+        let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
+
+        // move vouchers from unspent to to be spent
+        self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
+        assert!(self.to_be_spent_vouchers.len() > 0);
+
+        let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
+        let (values, serial_numbers): (Attributes, Attributes) = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| {
+                (
+                    signed_voucher.voucher.value,
+                    signed_voucher.voucher.serial_number,
+                )
+            })
+            .unzip();
+        let signatures: Vec<Signature> = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.signature)
+            .collect();
+
+        let to_be_issued_vouchers =
+            Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
+        let to_be_issued_vouchers_public_attributes: Vec<Attributes> = to_be_issued_vouchers
+            .iter()
+            .map(|v| v.public_attributes())
+            .collect();
+        // let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
+        //     prepare_vouchers_blind_sign(&coconut_params, &to_be_issued_vouchers);
     }
 
     fn confirm_vouchers_spent(&mut self) {
@@ -213,7 +257,7 @@ impl SignedVouchersList {
     }
 }
 
-impl ThetaAndInfos {
+impl ThetaSpendAndInfos {
     // return true if the vouchers are accepted, false otherwise
     fn verify(
         &self,
@@ -401,7 +445,7 @@ mod tests {
     use nymcoconut::{aggregate_verification_keys, ttp_keygen};
 
     #[test]
-    fn e2e() {
+    fn e2e_spend() {
         // define e-cash parameters
         let num_attributes = Voucher::number_of_attributes();
         let pay_max = Scalar::from(10);
@@ -564,6 +608,81 @@ mod tests {
                 && signed_vouchers_list.to_be_spent_vouchers.len() == 0
                 && signed_vouchers_list.spent_vouchers.len() == 5
         );
+    }
+
+    #[test]
+    fn e2e_request() {
+        // define e-cash parameters
+        let num_attributes = Voucher::number_of_attributes();
+        let pay_max = Scalar::from(10);
+        let voucher_max = Scalar::from(10);
+
+        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+        let mut bulletin_board = BulletinBoard::new();
+
+        // generate validators keypairs
+        let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3).unwrap();
+        let validators_verification_keys: Vec<VerificationKey> = validators_key_pairs
+            .iter()
+            .map(|keypair| keypair.verification_key())
+            .collect();
+        let validators_verification_key =
+            aggregate_verification_keys(&validators_verification_keys, Some(&[1, 2, 3])).unwrap();
+
+        // create initial vouchers
+        let binding_number = params.coconut_params.random_scalar();
+        let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
+
+        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
+        let vouchers_public_attributes: Vec<Attributes> =
+            vouchers.iter().map(|v| v.public_attributes()).collect();
+
+        // prepare requests for initial vouchers signatures partial signatures
+        let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
+            prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
+
+        // issue signatures for initial vouchers partial signatures
+        let blinded_signatures_shares = vouchers_blind_sign(
+            &params.coconut_params,
+            &blinded_signatures_shares_requests,
+            &vouchers_public_attributes,
+            &validators_key_pairs,
+        );
+
+        // unblind partial signatures
+        let signatures_shares = unblind_vouchers_signatures_shares(
+            &params.coconut_params,
+            &blinded_signatures_shares,
+            &vouchers,
+            &blinded_signatures_shares_openings,
+            &blinded_signatures_shares_requests,
+            &validators_verification_keys,
+        );
+
+        // aggregate partial signatures
+        let signatures = aggregate_vouchers_signatures_shares(
+            &params.coconut_params,
+            &signatures_shares,
+            &vouchers,
+            &validators_verification_key,
+        );
+
+        // bring together vouchers and corresponding signatures
+        let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+
+        // check we actually have 5 unspent vouchers
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 5
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 0
+        );
+
+        let pay = 5;
+
+        let to_be_spent_values = [Scalar::from(10)];
+        let to_be_issued_values = [Scalar::from(3), Scalar::from(2)];
+
+        // TODO complete e2e test for request
     }
 
     #[test]

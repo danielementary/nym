@@ -805,6 +805,32 @@ impl ProofSpend {
     }
 }
 
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct ProofRequestPhase {
+    number_of_to_be_issued_vouchers: u32,
+    number_of_to_be_spent_vouchers: u32,
+    // c
+    challenge: Scalar,
+    // responses
+    response_binding_number: Scalar,
+    // to be issued
+    responses_to_be_issued_values: Vec<Scalar>,
+    responses_to_be_issued_serial_numbers: Vec<Scalar>,
+    responses_to_be_issued_commitments_openings: Vec<Scalar>,
+    responses_to_be_issued_binding_numbers_openings: Vec<Scalar>,
+    responses_to_be_issued_values_openings: Vec<Scalar>,
+    responses_to_be_issued_serial_numbers_openings: Vec<Scalar>,
+    // to be spent
+    responses_to_be_spent_values: Vec<Scalar>,
+    responses_to_be_spent_serial_numbers: Vec<Scalar>,
+    responses_to_be_spent_blinders: Vec<Scalar>,
+    // range proof
+    range_proof_base_u: usize,
+    range_proof_number_of_elements_l: usize,
+    responses_to_be_issued_values_decompositions: Vec<Vec<Scalar>>,
+}
+
 // proof builder:
 // - commitment
 // - challenge

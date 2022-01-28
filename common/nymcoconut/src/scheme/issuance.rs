@@ -41,14 +41,14 @@ pub struct RequestPhaseBlindSignaturesRequest {
     number_of_to_be_issued_vouchers: u32,
     number_of_to_be_spent_vouchers: u32,
     // commitments for vouchers to be issued
-    to_be_issued_vouchers_commitments: Vec<G1Projective>,
-    to_be_issued_vouchers_commitments_hashes: Vec<G1Projective>,
-    to_be_issued_vouchers_binding_number_commitments: Vec<G1Projective>,
-    to_be_issued_vouchers_values_commitments: Vec<G1Projective>,
-    to_be_issued_vouchers_serial_numbers_commitments: Vec<G1Projective>,
+    to_be_issued_commitments: Vec<G1Projective>,
+    to_be_issued_commitments_hashes: Vec<G1Projective>,
+    to_be_issued_binding_number_commitments: Vec<G1Projective>,
+    to_be_issued_values_commitments: Vec<G1Projective>,
+    to_be_issued_serial_numbers_commitments: Vec<G1Projective>,
     // commitments for voucher to be spent
-    to_be_spent_vouchers_attributes_commitments: Vec<G2Projective>,
-    to_be_spent_vouchers_serial_numbers_commitments: Vec<G2Projective>,
+    to_be_spent_attributes_commitments: Vec<G2Projective>,
+    to_be_spent_serial_numbers_commitments: Vec<G2Projective>,
     // range proof for values of vouchers to be issued
     range_proof_base_u: usize,
     range_proof_number_of_elements_l: usize,

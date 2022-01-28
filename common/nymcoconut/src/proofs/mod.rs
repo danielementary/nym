@@ -106,7 +106,7 @@ impl ProofCmCs {
         // recompute h
         let h = hash_g1(commitment.to_bytes());
         let hs_bytes = params
-            .gen_hs()
+            .hs1()
             .iter()
             .map(|h| h.to_bytes())
             .collect::<Vec<_>>();
@@ -120,7 +120,7 @@ impl ProofCmCs {
         let commitment_attributes = g1 * witness_commitment_opening
             + witness_attributes
                 .iter()
-                .zip(params.gen_hs().iter())
+                .zip(params.hs1().iter())
                 .map(|(wm_i, hs_i)| hs_i * wm_i)
                 .sum::<G1Projective>();
 
@@ -189,7 +189,7 @@ impl ProofCmCs {
         let g1 = params.gen1();
 
         let hs_bytes = params
-            .gen_hs()
+            .hs1()
             .iter()
             .map(|h| h.to_bytes())
             .collect::<Vec<_>>();
@@ -201,7 +201,7 @@ impl ProofCmCs {
             + self
                 .response_attributes
                 .iter()
-                .zip(params.gen_hs().iter())
+                .zip(params.hs1().iter())
                 .map(|(res_attr, hs)| hs * res_attr)
                 .sum::<G1Projective>();
 
@@ -808,14 +808,14 @@ impl ProofSpend {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ProofRequestPhase {
-    number_of_to_be_issued_vouchers: u32,
-    number_of_to_be_spent_vouchers: u32,
+    number_of_to_be_issued_vouchers: usize,
+    number_of_to_be_spent_vouchers: usize,
     // c
     challenge: Scalar,
     // responses
     response_binding_number: Scalar,
     // to be issued
-    responses_to_be_issued_values: Vec<Scalar>,
+    responses_to_be_issued_values_decompositions: Vec<Vec<Scalar>>,
     responses_to_be_issued_serial_numbers: Vec<Scalar>,
     responses_to_be_issued_commitments_openings: Vec<Scalar>,
     responses_to_be_issued_binding_numbers_openings: Vec<Scalar>,
@@ -828,7 +828,221 @@ pub struct ProofRequestPhase {
     // range proof
     range_proof_base_u: usize,
     range_proof_number_of_elements_l: usize,
-    responses_to_be_issued_values_decompositions: Vec<Vec<Scalar>>,
+    responses_range_proof_blinders: Vec<Scalar>,
+}
+
+impl ProofRequestPhase {
+    pub(crate) fn construct(
+        params: &Parameters,
+        verification_key: &VerificationKey,
+        number_of_to_be_issued_vouchers: usize,
+        number_of_to_be_spent_vouchers: usize,
+        binding_number: &Scalar,
+        // to be issued
+        to_be_issued_commitments: &[G1Projective],
+        to_be_issued_values_decompositions: &[Vec<Scalar>],
+        to_be_issued_serial_numbers: &[Scalar],
+        to_be_issued_commitments_openings: &[Scalar],
+        to_be_issued_binding_numbers_openings: &[Scalar],
+        to_be_issued_values_openings: &[Scalar],
+        to_be_issued_serial_numbers_openings: &[Scalar],
+        // to be spent
+        to_be_spent_values: &[Scalar],
+        to_be_spent_serial_numbers: &[Scalar],
+        to_be_spent_blinders: &[Scalar],
+        // range proof
+        range_proof_verification_key: &VerificationKey,
+        range_proof_base_u: usize,
+        range_proof_number_of_elements_l: usize,
+        range_proof_blinders: &[Vec<Scalar>],
+    ) -> Self {
+        let to_be_issued_hm_s: Vec<G1Projective> = to_be_issued_commitments
+            .iter()
+            .map(|commitment| hash_g1(commitment.to_bytes()))
+            .collect();
+
+        // create the witnesses
+        let witness_binding_number = params.random_scalar();
+        let witnesses_to_be_issued_values_decompositions: Vec<Vec<Scalar>> = (0
+            ..number_of_to_be_issued_vouchers)
+            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l))
+            .collect();
+        let witnesses_to_be_issued_serial_numbers =
+            params.n_random_scalars(to_be_issued_serial_numbers.len());
+        let witnesses_to_be_issued_commitments_openings =
+            params.n_random_scalars(to_be_issued_commitments_openings.len());
+        let witnesses_to_be_issued_binding_numbers_openings =
+            params.n_random_scalars(to_be_issued_binding_numbers_openings.len());
+        let witnesses_to_be_issued_values_openings =
+            params.n_random_scalars(to_be_issued_values_openings.len());
+        let witnesses_to_be_issued_serial_numbers_openings =
+            params.n_random_scalars(to_be_issued_serial_numbers_openings.len());
+        let witnesses_to_be_spent_values = params.n_random_scalars(to_be_spent_values.len());
+        let witnesses_to_be_spent_serial_numbers =
+            params.n_random_scalars(to_be_spent_serial_numbers.len());
+        let witnesses_to_be_spent_blinders = params.n_random_scalars(to_be_spent_blinders.len());
+        let witnesses_range_proof_blinders: Vec<Vec<Scalar>> = (0..number_of_to_be_issued_vouchers)
+            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l))
+            .collect();
+
+        // witnesses commitments
+        let to_be_issued_witnesses_commitments: Vec<G1Projective> = izip!(
+            witnesses_to_be_issued_values_openings.iter(),
+            witnesses_to_be_issued_values_decompositions.iter(),
+            witnesses_to_be_issued_serial_numbers.iter()
+        )
+        .map(|(opening, values_decomposition, serial_number)| {
+            params.gen1() * opening
+                + params.hs1()[0] * witness_binding_number
+                + values_decomposition
+                    .iter()
+                    .map(|value_decomposition| params.hs1()[1] * value_decomposition)
+                    .sum()
+                + params.hs1()[2] * serial_number
+        })
+        .collect();
+
+        let to_be_issued_witnesses_binding_numbers_commitments = izip!(
+            witnesses_to_be_issued_serial_numbers_openings.iter(),
+            to_be_issued_hm_s.iter()
+        )
+        .map(|(opening, hm)| params.gen1() * opening + hm * witness_binding_number)
+        .collect();
+
+        let to_be_issued_witnesses_values_commitments = izip!(
+            witnesses_to_be_issued_values_openings.iter(),
+            witnesses_to_be_issued_values_decompositions.iter(),
+            to_be_issued_hm_s.iter()
+        )
+        .map(|(opening, values_decomposition, hm)| {
+            params.gen1() * opening
+                + values_decomposition
+                    .iter()
+                    .map(|value_decomposition| hm * value_decomposition)
+                    .sum()
+        })
+        .collect();
+
+        let to_be_issued_witnesses_serial_numbers_commitments = izip!(
+            witnesses_to_be_issued_serial_numbers_openings.iter(),
+            to_be_issued_hm_s.iter(),
+            witnesses_to_be_issued_serial_numbers.iter(),
+        )
+        .map(|(opening, hm, serial_number)| params.gen1() * opening + hm * serial_number)
+        .collect();
+
+        let to_be_spent_witnesses_attributes_commitments = izip!(
+            witnesses_to_be_spent_values.iter(),
+            witnesses_to_be_spent_serial_numbers.iter(),
+            witnesses_to_be_spent_blinders.iter()
+        )
+        .map(|(value, serial_number, blinder)| {
+            verification_key.alpha()
+                + verification_key.beta_g2()[0] * witness_binding_number
+                + verification_key.beta_g2()[1] * value
+                + verification_key.beta_g2()[2] * serial_number
+                + params.gen2() * blinder
+        })
+        .collect();
+
+        let to_be_spent_witnesses_serial_numbers_commitments = witnesses_to_be_spent_serial_numbers
+            .iter()
+            .map(|serial_number| params.gen2() * serial_number)
+            .collect();
+
+        let witnesses_blinded_pay = witnesses_to_be_issued_values_decompositions
+            .iter()
+            .map(|values_decomposition| {
+                values_decomposition
+                    .iter()
+                    .map(|value_decomposition| params.hs2()[1] * value_decomposition)
+                    .sum()
+            })
+            .sum()
+            / witnesses_to_be_spent_values
+                .iter()
+                .map(|value| params.hs2()[1] * value);
+
+        let range_proof_witnesses_blinders_commitments = izip!(
+            witnesses_to_be_issued_values_decompositions.iter(),
+            witnesses_range_proof_blinders.iter()
+        )
+        .map(|(values_decomposition, blinders)| {
+            izip!(values_decomposition.iter(), blinders.iter())
+                .map(|(value_decomposition, blinder)| {
+                    range_proof_verification_key.alpha()
+                        + range_proof_verification_key.beta_g2()[0] * value_decomposition
+                        + params.gen2() * blinder
+                })
+                .collect()
+        })
+        .collect();
+
+        // TODO
+        // compute challenge
+        // compute responses
+
+        // let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
+        //     .iter()
+        //     .map(|bmk| bmk.to_bytes())
+        //     .collect();
+        // let blinded_serial_numbers_zeta_bytes: Vec<_> = blinded_serial_numbers_zeta
+        //     .iter()
+        //     .map(|bsnz| bsnz.to_bytes())
+        //     .collect();
+
+        // let betas_g2_bytes: Vec<_> = verification_key
+        //     .beta_g2()
+        //     .iter()
+        //     .map(|b| b.to_bytes())
+        //     .collect();
+
+        // let commitments_kappa_bytes: Vec<_> =
+        //     commitments_kappa.iter().map(|ck| ck.to_bytes()).collect();
+        // let commitments_zeta_bytes: Vec<_> =
+        //     commitments_zeta.iter().map(|cz| cz.to_bytes()).collect();
+
+        // let challenge = compute_challenge::<ChallengeDigest, _, _>(
+        //     blinded_messages_kappa_bytes
+        //         .iter()
+        //         .map(|b| b.as_ref())
+        //         .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
+        //         .chain(std::iter::once(blinded_sum_c.to_bytes().as_ref()))
+        //         .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
+        //         .chain(std::iter::once(
+        //             verification_key.alpha().to_bytes().as_ref(),
+        //         ))
+        //         .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
+        //         .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
+        //         .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
+        //         .chain(std::iter::once(commitment_c.to_bytes().as_ref())),
+        // );
+
+        //         // responses
+        //         let response_binding_number =
+        //             produce_response(&witness_binding_number, &challenge, &binding_number);
+        //         let responses_values = produce_responses(&witnesses_values, &challenge, &values);
+        //         let responses_serial_numbers =
+        //             produce_responses(&witnesses_serial_numbers, &challenge, &serial_numbers);
+        //         let responses_blinders = produce_responses(
+        //             &witnesses_signatures_blinding_factors,
+        //             &challenge,
+        //             &signatures_blinding_factors,
+        //         );
+
+        //         ProofSpend {
+        //             number_of_vouchers_spent,
+        //             challenge,
+        //             response_binding_number,
+        //             responses_values,
+        //             responses_serial_numbers,
+        //             responses_blinders,
+        //         }
+    }
+
+    pub(crate) fn private_attributes_len(&self) -> usize {
+        3
+    }
 }
 
 // proof builder:

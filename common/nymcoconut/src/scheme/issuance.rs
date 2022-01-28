@@ -4,11 +4,11 @@
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
-use bls12_381::{G1Affine, G1Projective, Scalar};
+use bls12_381::{G1Affine, G1Projective, G2Projective, Scalar};
 use group::{Curve, GroupEncoding};
 
 use crate::error::{CoconutError, Result};
-use crate::proofs::ProofCmCs;
+use crate::proofs::{ProofCmCs, ProofRequestPhase};
 use crate::scheme::setup::Parameters;
 use crate::scheme::BlindedSignature;
 use crate::scheme::SecretKey;

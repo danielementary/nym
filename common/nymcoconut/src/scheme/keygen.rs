@@ -465,7 +465,7 @@ impl TryFrom<&[u8]> for KeyPair {
 /// that are independent of each other.
 #[cfg(test)]
 pub fn keygen(params: &Parameters) -> KeyPair {
-    let attributes = params.gen_hs().len();
+    let attributes = params.hs1().len();
 
     let x = params.random_scalar();
     let ys = params.n_random_scalars(attributes);
@@ -501,7 +501,7 @@ pub fn ttp_keygen(
             ));
     }
 
-    let attributes = params.gen_hs().len();
+    let attributes = params.hs1().len();
 
     // generate polynomials
     let v = Polynomial::new_random(params, threshold - 1);

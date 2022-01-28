@@ -234,7 +234,7 @@ pub fn prepare_blind_sign(
         ));
     }
 
-    let hs = params.gen_hs();
+    let hs = params.hs1();
     if private_attributes.len() + public_attributes.len() > hs.len() {
         return Err(CoconutError::IssuanceMaxAttributes {
             max: hs.len(),
@@ -282,7 +282,7 @@ pub fn blind_sign(
     public_attributes: &[Attribute],
 ) -> Result<BlindedSignature> {
     let num_private = blind_sign_request.private_attributes_commitments.len();
-    let hs = params.gen_hs();
+    let hs = params.hs1();
 
     if num_private + public_attributes.len() > hs.len() {
         return Err(CoconutError::IssuanceMaxAttributes {

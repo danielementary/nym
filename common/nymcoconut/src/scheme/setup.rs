@@ -15,10 +15,13 @@ pub struct Parameters {
     g1: G1Affine,
 
     /// Additional generators of the G1 group
-    hs: Vec<G1Affine>,
+    hs1: Vec<G1Affine>,
 
     /// Generator of the G2 group
     g2: G2Affine,
+
+    // Additional generators of the G2 group
+    hs2: Vec<G2Affine>,
 
     /// Precomputed G2 generator used for the miller loop
     _g2_prepared_miller: G2Prepared,
@@ -32,14 +35,25 @@ impl Parameters {
             ));
         }
 
-        let hs = (1..=num_attributes)
+        let g1 = G1Affine::generator();
+        let g2 = G2Affine::generator();
+
+        let mut rng = thread_rng();
+
+        let hs1 = (1..=num_attributes)
             .map(|i| hash_g1(format!("h{}", i)).to_affine())
             .collect();
 
+        // TODO check if this is valid
+        let hs2: Vec<G2Affine> = (1..=num_attributes)
+            .map(|_| (g2 * Scalar::random(&mut rng)).to_affine())
+            .collect();
+
         Ok(Parameters {
-            g1: G1Affine::generator(),
-            hs,
-            g2: G2Affine::generator(),
+            g1,
+            hs1,
+            g2,
+            hs2,
             _g2_prepared_miller: G2Prepared::from(G2Affine::generator()),
         })
     }
@@ -58,8 +72,14 @@ impl Parameters {
         &self._g2_prepared_miller
     }
 
-    pub(crate) fn gen_hs(&self) -> &[G1Affine] {
-        &self.hs
+    // pub(crate) fn hs1(&self) -> &[G1Affine] {
+    pub fn hs1(&self) -> &[G1Affine] {
+        &self.hs1
+    }
+
+    // pub(crate) fn hs2(&self) -> &[G1Affine] {
+    pub fn hs2(&self) -> &[G2Affine] {
+        &self.hs2
     }
 
     pub fn random_scalar(&self) -> Scalar {
@@ -84,8 +104,9 @@ impl Default for Parameters {
     fn default() -> Self {
         Parameters {
             g1: G1Affine::generator(),
-            hs: Vec::new(),
+            hs1: Vec::new(),
             g2: G2Affine::generator(),
+            hs2: Vec::new(),
             _g2_prepared_miller: G2Prepared::from(G2Affine::generator()),
         }
     }

@@ -1085,20 +1085,75 @@ impl ProofRequestPhase {
 
         let challenge = compute_challenge(challenge_input.iter());
 
-        // TODO
-        // compute responses
-
-        //         // responses
-        //         let response_binding_number =
-        //             produce_response(&witness_binding_number, &challenge, &binding_number);
-        //         let responses_values = produce_responses(&witnesses_values, &challenge, &values);
-        //         let responses_serial_numbers =
-        //             produce_responses(&witnesses_serial_numbers, &challenge, &serial_numbers);
-        //         let responses_blinders = produce_responses(
-        //             &witnesses_signatures_blinding_factors,
-        //             &challenge,
-        //             &signatures_blinding_factors,
-        //         );
+        // responses
+        let witness_binding_number =
+            produce_response(&witness_binding_number, &challenge, &binding_number);
+        let responses_to_be_issued_values_decompositions = izip!(
+            witnesses_to_be_issued_values_decompositions.iter(),
+            to_be_issued_values_decompositions.iter()
+        )
+        .map(
+            |(witnesses_to_be_issued_values_decomposition, to_be_issued_values_decomposition)| {
+                produce_responses(
+                    &witnesses_to_be_issued_values_decomposition,
+                    &challenge,
+                    &to_be_issued_values_decomposition,
+                )
+            },
+        )
+        .collect();
+        let responses_to_be_issued_serial_numbers = produce_responses(
+            &witnesses_to_be_issued_serial_numbers,
+            &challenge,
+            &to_be_issued_serial_numbers,
+        );
+        let responses_to_be_issued_commitments_openings = produce_responses(
+            &witnesses_to_be_issued_commitments_openings,
+            &challenge,
+            &to_be_issued_commitments_openings,
+        );
+        let responses_to_be_issued_binding_numbers_openings = produce_responses(
+            &witnesses_to_be_issued_binding_numbers_openings,
+            &challenge,
+            &to_be_issued_binding_numbers_openings,
+        );
+        let responses_to_be_issued_values_openings = produce_responses(
+            &witnesses_to_be_issued_values_openings,
+            &challenge,
+            &to_be_issued_values_openings,
+        );
+        let responses_to_be_issued_serial_numbers_openings = produce_responses(
+            &witnesses_to_be_issued_serial_numbers_openings,
+            &challenge,
+            &to_be_issued_serial_numbers_openings,
+        );
+        let responses_to_be_spent_values = produce_responses(
+            &witnesses_to_be_spent_values,
+            &challenge,
+            &to_be_spent_values,
+        );
+        let responses_to_be_spent_serial_numbers = produce_responses(
+            &witnesses_to_be_spent_serial_numbers,
+            &challenge,
+            &to_be_spent_serial_numbers,
+        );
+        let responses_to_be_spent_blinders = produce_responses(
+            &witnesses_to_be_spent_blinders,
+            &challenge,
+            &to_be_spent_blinders,
+        );
+        let responses_range_proof_blinders = izip!(
+            witnesses_range_proof_blinders.iter(),
+            range_proof_blinders.iter()
+        )
+        .map(|(witnesses_range_proof_blinder, range_proof_blinder)| {
+            produce_responses(
+                &witnesses_range_proof_blinder,
+                &challenge,
+                &range_proof_blinder,
+            )
+        })
+        .collect();
 
         //         ProofSpend {
         //             number_of_vouchers_spent,

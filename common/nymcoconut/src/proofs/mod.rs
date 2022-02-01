@@ -906,8 +906,11 @@ impl ProofRequestPhase {
                     + params.hs1()[0] * witness_binding_number
                     + witnesses_values_decomposition
                         .iter()
-                        .map(|witness_value_decomposition| {
+                        .enumerate()
+                        .map(|(index, witness_value_decomposition)| {
                             params.hs1()[1] * witness_value_decomposition
+                                + params.hs1()[1]
+                                    * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                         })
                         .sum::<G1Projective>()
                     + params.hs1()[2] * witness_serial_number
@@ -931,7 +934,11 @@ impl ProofRequestPhase {
             params.gen1() * witness_opening
                 + witnesses_values_decomposition
                     .iter()
-                    .map(|witness_value_decomposition| hm * witness_value_decomposition)
+                    .enumerate()
+                    .map(|(index, witness_value_decomposition)| {
+                        hm * witness_value_decomposition
+                            + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                    })
                     .sum::<G1Projective>()
         })
         .collect();
@@ -971,8 +978,11 @@ impl ProofRequestPhase {
             .map(|witnesses_values_decomposition| {
                 witnesses_values_decomposition
                     .iter()
-                    .map(|witness_value_decomposition| {
+                    .enumerate()
+                    .map(|(index, witness_value_decomposition)| {
                         params.hs2()[1] * witness_value_decomposition
+                            + params.hs2()[1]
+                                * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                     })
                     .sum::<G2Projective>()
             })

@@ -810,6 +810,8 @@ impl ProofSpend {
 pub struct ProofRequestPhase {
     number_of_to_be_issued_vouchers: usize,
     number_of_to_be_spent_vouchers: usize,
+    range_proof_base_u: usize,
+    range_proof_number_of_elements_l: usize,
     // c
     challenge: Scalar,
     // responses
@@ -826,8 +828,6 @@ pub struct ProofRequestPhase {
     responses_to_be_spent_serial_numbers: Vec<Scalar>,
     responses_to_be_spent_blinders: Vec<Scalar>,
     // range proof
-    range_proof_base_u: usize,
-    range_proof_number_of_elements_l: usize,
     responses_range_proof_blinders: Vec<Vec<Scalar>>,
 }
 
@@ -835,8 +835,12 @@ impl ProofRequestPhase {
     pub(crate) fn construct(
         params: &Parameters,
         verification_key: &VerificationKey,
+        range_proof_verification_key: &VerificationKey,
         number_of_to_be_issued_vouchers: usize,
         number_of_to_be_spent_vouchers: usize,
+        range_proof_base_u: usize,
+        range_proof_number_of_elements_l: usize,
+        // secrets
         binding_number: &Scalar,
         // to be issued
         to_be_issued_values_decompositions: &[Vec<Scalar>],
@@ -850,9 +854,6 @@ impl ProofRequestPhase {
         to_be_spent_serial_numbers: &[Scalar],
         to_be_spent_blinders: &[Scalar],
         // range proof
-        range_proof_verification_key: &VerificationKey,
-        range_proof_base_u: usize,
-        range_proof_number_of_elements_l: usize,
         range_proof_blinders: &[Vec<Scalar>],
         // for challenge
         to_be_issued_commitments: &[G1Projective],

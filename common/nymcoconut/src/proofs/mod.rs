@@ -1408,8 +1408,96 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        // TODO
-        // let to_be_spent_witnesses_attributes_commitments
+        let to_be_spent_witnesses_attributes_commitments = izip!(
+            to_be_spent_attributes_commitments.iter(),
+            self.responses_to_be_spent_values.iter(),
+            self.responses_to_be_spent_serial_numbers.iter(),
+            self.responses_to_be_spent_blinders.iter()
+        )
+        .map(
+            |(
+                to_be_spent_attributes_commitment,
+                response_value,
+                response_serial_number,
+                response_blinder,
+            )| {
+                to_be_spent_attributes_commitment * self.challenge
+                    + verification_key.alpha() * (Scalar::one() - self.challenge)
+                    + verification_key.beta_g2()[0] * self.response_binding_number
+                    + verification_key.beta_g2()[1] * response_value
+                    + verification_key.beta_g2()[2] * response_serial_number
+                    + params.gen2() * response_blinder
+            },
+        )
+        .collect();
+
+        let to_be_spent_witnesses_serial_numbers_commitments = izip!(
+            to_be_spent_serial_numbers_commitments.iter(),
+            self.responses_to_be_spent_serial_numbers.iter()
+        )
+        .map(
+            |(to_be_spent_serial_numbers_commitment, response_serial_number)| {
+                to_be_spent_serial_numbers_commitment * self.challenge
+                    + params.gen2() * response_serial_number
+            },
+        )
+        .collect();
+
+        let witnesses_blinded_pay = blinded_pay * self.challenge
+            + self
+                .responses_to_be_issued_values_decompositions
+                .iter()
+                .map(|responses_values_decomposition| {
+                    responses_values_decomposition
+                        .iter()
+                        .enumerate()
+                        .map(|(index, response_value_decomposition)| {
+                            params.hs2()[1] * response_value_decomposition
+                                + params.hs2()[1]
+                                    * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                        })
+                        .sum::<G2Projective>()
+                })
+                .sum::<G2Projective>()
+            - responses_to_be_spent_values
+                .iter()
+                .map(|value| params.hs2()[1] * value)
+                .sum::<G2Projective>();
+
+        let range_proof_witnesses_decomposition_commitments = izip!(
+            range_proof_decompositions_commitments.iter(),
+            self.responses_to_be_issued_values_decompositions.iter(),
+            self.responses_range_proof_blinders.iter()
+        )
+        .map(
+            |(
+                range_proof_decomposition_commitments,
+                responses_values_decomposition,
+                responses_blinders,
+            )| {
+                izip!(
+                    range_proof_decomposition_commitments.iter(),
+                    responses_values_decomposition.iter(),
+                    responses_blinders.iter()
+                )
+                .map(
+                    |(
+                        range_proof_decomposition_commitment,
+                        response_value_decomposition,
+                        response_blinder,
+                    )| {
+                        range_proof_decomposition_commitment * self.challenge
+                            + range_proof_verification_key.alpha()
+                                * (Scalar::one() - self.challenge)
+                            + range_proof_verification_key.beta_g2()[0]
+                                * response_value_decomposition
+                            + params.gen2() * response_blinder
+                    },
+                )
+                .collect()
+            },
+        )
+        .collect();
 
         false
     }

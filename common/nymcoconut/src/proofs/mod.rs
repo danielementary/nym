@@ -1295,6 +1295,124 @@ impl ProofRequestPhase {
     pub(crate) fn private_attributes_len(&self) -> usize {
         3
     }
+
+    pub(crate) fn verify(
+        &self,
+        params: &Parameters,
+        verification_key: &VerificationKey,
+        range_proof_verification_key: &VerificationKey,
+        to_be_issued_commitments: &[G1Projective],
+        to_be_issued_binding_number_commitments: &[G1Projective],
+        to_be_issued_values_commitments: &[G1Projective],
+        to_be_issued_serial_numbers_commitments: &[G1Projective],
+        to_be_spent_attributes_commitments: &[G2Projective],
+        to_be_spent_serial_numbers_commitments: &[G2Projective],
+        blinded_pay: &G2Projective,
+        range_proof_decompositions_commitments: &[Vec<G2Projective>],
+    ) -> bool {
+        let to_be_issued_hm_s: Vec<G1Projective> = to_be_issued_commitments
+            .iter()
+            .map(|commitment| hash_g1(commitment.to_bytes()))
+            .collect();
+
+        let to_be_issued_witnesses_commitments = izip!(
+            to_be_issued_commitments.iter(),
+            self.responses_to_be_issued_commitments_openings.iter(),
+            self.responses_to_be_issued_values_decompositions.iter(),
+            self.responses_to_be_issued_serial_numbers.iter()
+        )
+        .map(
+            |(
+                to_be_issued_commitment,
+                response_opening,
+                responses_values_decomposition,
+                response_serial_number,
+            )| {
+                to_be_issued_commitment * self.challenge
+                    + params.gen1() * response_opening
+                    + params.hs1()[0] * self.response_binding_number
+                    + responses_values_decomposition
+                        .iter()
+                        .enumerate()
+                        .map(|(index, response_value_decomposition)| {
+                            params.hs1()[1] * response_value_decomposition
+                                + params.hs1()[1]
+                                    * (Scalar::from(
+                                        (self.range_proof_base_u as u64).pow(index as u32),
+                                    ))
+                        })
+                        .sum::<G1Projective>()
+                    + params.hs1()[2] * response_serial_number
+            },
+        )
+        .collect();
+
+        let to_be_issued_witnesses_binding_numbers_commitments = izip!(
+            to_be_issued_binding_number_commitments.iter(),
+            self.responses_to_be_issued_binding_numbers_openings.iter(),
+            to_be_issued_hm_s.iter()
+        )
+        .map(
+            |(to_be_issued_binding_number_commitment, response_opening, hm)| {
+                to_be_issued_binding_number_commitment * self.challenge
+                    + params.gen1() * response_opening
+                    + hm * self.response_serial_number
+            },
+        )
+        .collect();
+
+        let to_be_issued_witnesses_values_commitments = izip!(
+            to_be_issued_values_commitments.iter(),
+            self.responses_to_be_issued_values_openings.iter(),
+            to_be_issued_hm_s.iter(),
+            self.responses_to_be_issued_values_decompositions.iter()
+        )
+        .map(
+            |(
+                to_be_issued_values_commitment,
+                response_opening,
+                hm,
+                responses_values_decomposition,
+            )| {
+                to_be_issued_values_commitment * self.challenge
+                    + params.gen1() * response_opening
+                    + responses_values_decomposition
+                        .iter()
+                        .enumerate()
+                        .map(|(index, response_value_decomposition)| {
+                            hm * response_value_decomposition
+                                + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                        })
+                        .sum::<G1Projective>()
+            },
+        )
+        .collect();
+
+        let to_be_issued_witnesses_serial_numbers_commitments = izip!(
+            to_be_issued_serial_numbers_commitments.iter(),
+            self.responses_to_be_issued_serial_numbers_openings.iter(),
+            to_be_issued_hm_s.iter(),
+            self.responses_to_be_issued_serial_numbers.iter()
+        )
+        .map(
+            |(
+                to_be_issued_serial_numbers_commitment,
+                response_opening,
+                hm,
+                response_serial_number,
+            )| {
+                to_be_issued_serial_numbers_commitment * self.challenge
+                    + params.gen1() * response_opening
+                    + hm * response_serial_number
+            },
+        )
+        .collect();
+
+        // TODO
+        // let to_be_spent_witnesses_attributes_commitments
+
+        false
+    }
 }
 
 // proof builder:

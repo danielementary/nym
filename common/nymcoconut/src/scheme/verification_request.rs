@@ -9,13 +9,13 @@ use bls12_381::{G2Prepared, G2Projective, Scalar};
 use group::Curve;
 
 use crate::error::{CoconutError, Result};
-use crate::proofs::ProofSpend;
+use crate::proofs::ProofRequestPhase;
 use crate::scheme::check_bilinear_pairing;
 use crate::scheme::setup::Parameters;
 use crate::scheme::verification::{compute_kappa, compute_zeta};
 use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
-use crate::utils::try_deserialize_g2_projective;
+use crate::utils::{try_deserialize_g1_projective, try_deserialize_g2_projective};
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -40,87 +40,205 @@ pub struct ThetaRequestPhase {
     proof: ProofRequestPhase,
 }
 
-// impl TryFrom<&[u8]> for ThetaSpend {
-//     type Error = CoconutError;
+impl TryFrom<&[u8]> for ThetaSpend {
+    type Error = CoconutError;
 
-//     fn try_from(bytes: &[u8]) -> Result<ThetaSpend> {
-//         // 4 + 96 + 96 + 96 + 96 + ? >= 388
-//         if bytes.len() < 388 {
-//             return Err(
-//                 CoconutError::Deserialization(
-//                     format!("Tried to deserialize ThetaSpend with insufficient number of bytes, expected >= 388, got {}", bytes.len()),
-//                 ));
-//         }
+    fn try_from(bytes: &[u8]) -> Result<ThetaSpend> {
+        let mut p = 0;
+        let mut p_prime = 1;
+        let number_of_to_be_issued_vouchers =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
 
-//         let mut p = 0;
-//         let mut p_prime = 4;
-//         let number_of_vouchers_spent = u32::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+        p = p_prime;
+        p_prime += 1;
+        let number_of_to_be_spent_vouchers =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
 
-//         let mut blinded_messages = Vec::with_capacity(number_of_vouchers_spent as usize);
-//         for i in 0..number_of_vouchers_spent {
-//             p = p_prime;
-//             p_prime += 96;
+        p = p_prime;
+        p_prime += 1;
+        let range_proof_base_u = u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
 
-//             let blinded_message_bytes = bytes[p..p_prime].try_into().unwrap();
-//             let blinded_message = try_deserialize_g2_projective(
-//                 &blinded_message_bytes,
-//                 CoconutError::Deserialization(format!(
-//                     "failed to deserialize the blinded message (kappa) at index {}",
-//                     i
-//                 )),
-//             )?;
+        p = p_prime;
+        p_prime += 1;
+        let range_proof_number_of_elements_l =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
 
-//             blinded_messages.push(blinded_message);
-//         }
+        let mut to_be_issued_commitments =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 96;
 
-//         let mut blinded_serial_numbers = Vec::with_capacity(number_of_vouchers_spent as usize);
-//         for i in 0..number_of_vouchers_spent {
-//             p = p_prime;
-//             p_prime += 96;
+            let to_be_issued_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
+            let to_be_issued_commitment = try_deserialize_g1_projective(
+                &to_be_issued_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_issued_commitment at index {}",
+                    i
+                )),
+            )?;
 
-//             let blinded_serial_number_bytes = bytes[p..p_prime].try_into().unwrap();
-//             let blinded_serial_number = try_deserialize_g2_projective(
-//                 &blinded_serial_number_bytes,
-//                 CoconutError::Deserialization(format!(
-//                     "failed to deserialize the blinded serial number (zeta) at index {}",
-//                     i
-//                 )),
-//             )?;
+            to_be_issued_commitments.push(to_be_issued_commitment);
+        }
 
-//             blinded_serial_numbers.push(blinded_serial_number);
-//         }
+        let mut to_be_issued_binding_number_commitments =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 96;
 
-//         p = p_prime;
-//         p_prime += 96;
-//         let blinded_spent_amount_bytes = bytes[p..p_prime].try_into().unwrap();
-//         let blinded_spent_amount = try_deserialize_g2_projective(
-//             &blinded_spent_amount_bytes,
-//             CoconutError::Deserialization("failed to deserialize blinded spent amount".to_string()),
-//         )?;
+            let to_be_issued_binding_number_commitment_bytes =
+                bytes[p..p_prime].try_into().unwrap();
+            let to_be_issued_binding_number_commitment = try_deserialize_g1_projective(
+                &to_be_issued_binding_number_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_issued_binding_number_commitment at index {}",
+                    i
+                )),
+            )?;
 
-//         let mut vouchers_signatures = Vec::with_capacity(number_of_vouchers_spent as usize);
-//         for _ in 0..number_of_vouchers_spent {
-//             p = p_prime;
-//             p_prime += 96;
+            to_be_issued_binding_number_commitments.push(to_be_issued_binding_number_commitment);
+        }
 
-//             let voucher_signature = Signature::try_from(&bytes[p..p_prime])?;
+        let mut to_be_issued_values_commitments =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 96;
 
-//             vouchers_signatures.push(voucher_signature);
-//         }
+            let to_be_issued_values_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
+            let to_be_issued_values_commitment = try_deserialize_g1_projective(
+                &to_be_issued_values_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_issued_values_commitment at index {}",
+                    i
+                )),
+            )?;
 
-//         p = p_prime;
-//         let pi_v = ProofSpend::from_bytes(&bytes[p..])?;
+            to_be_issued_values_commitments.push(to_be_issued_values_commitment);
+        }
 
-//         Ok(ThetaSpend {
-//             number_of_vouchers_spent,
-//             blinded_messages,
-//             blinded_serial_numbers,
-//             blinded_spent_amount,
-//             vouchers_signatures,
-//             pi_v,
-//         })
-//     }
-// }
+        let mut to_be_issued_serial_numbers_commitments =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 96;
+
+            let to_be_issued_serial_numbers_commitment_bytes =
+                bytes[p..p_prime].try_into().unwrap();
+            let to_be_issued_serial_numbers_commitment = try_deserialize_g1_projective(
+                &to_be_issued_serial_numbers_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_issued_serial_numbers_commitment at index {}",
+                    i
+                )),
+            )?;
+
+            to_be_issued_serial_numbers_commitments.push(to_be_issued_serial_numbers_commitment);
+        }
+
+        let mut to_be_spent_attributes_commitments =
+            Vec::with_capacity(number_of_to_be_spent_vouchers as usize);
+        for i in 0..number_of_to_be_spent_vouchers {
+            p = p_prime;
+            p_prime += 96;
+
+            let to_be_spent_attributes_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
+            let to_be_spent_attributes_commitment = try_deserialize_g1_projective(
+                &to_be_spent_attributes_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_spent_attributes_commitment at index {}",
+                    i
+                )),
+            )?;
+
+            to_be_spent_attributes_commitments.push(to_be_spent_attributes_commitment);
+        }
+
+        let mut to_be_spent_serial_numbers_commitments =
+            Vec::with_capacity(number_of_to_be_spent_vouchers as usize);
+        for i in 0..number_of_to_be_spent_vouchers {
+            p = p_prime;
+            p_prime += 96;
+
+            let to_be_spent_serial_numbers_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
+            let to_be_spent_serial_numbers_commitment = try_deserialize_g1_projective(
+                &to_be_spent_serial_numbers_commitment_bytes,
+                CoconutError::Deserialization(format!(
+                    "failed to deserialize the to_be_spent_serial_numbers_commitment at index {}",
+                    i
+                )),
+            )?;
+
+            to_be_spent_serial_numbers_commitments.push(to_be_spent_serial_numbers_commitment);
+        }
+
+        p = p_prime;
+        p_prime += 96;
+        let blinded_pay_bytes = bytes[p..p_prime].try_into().unwrap();
+        let blinded_pay = try_deserialize_g2_projective(
+            &blinded_pay_bytes,
+            CoconutError::Deserialization("failed to deserialize blinded_pay".to_string()),
+        )?;
+
+        let mut range_proof_decompositions_commitments =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            let mut range_proof_decomposition_commitments =
+                Vec::with_capacity(range_proof_number_of_elements_l as usize);
+
+            for j in 0..range_proof_number_of_elements_l {
+                p = p_prime;
+                p_prime += 96;
+
+                let range_proof_decomposition_commitment_bytes =
+                    bytes[p..p_prime].try_into().unwrap();
+                let range_proof_decomposition_commitment = try_deserialize_g1_projective(
+                    &range_proof_decomposition_commitment_bytes,
+                    CoconutError::Deserialization(format!(
+                        "failed to deserialize the to_be_issued_commitment at index {}",
+                        i
+                    )),
+                )?;
+
+                range_proof_decomposition_commitments.push(range_proof_decomposition_commitment);
+            }
+
+            range_proof_decompositions_commitments.push(range_proof_decomposition_commitments);
+        }
+
+        let mut to_be_spent_signatures =
+            Vec::with_capacity(number_of_to_be_spent_vouchers as usize);
+        for _ in 0..number_of_to_be_spent_vouchers {
+            p = p_prime;
+            p_prime += 96;
+
+            let to_be_spent_signature = Signature::try_from(&bytes[p..p_prime])?;
+
+            to_be_spent_signatures.push(to_be_spent_signature);
+        }
+
+        p = p_prime;
+        let proof = ProofRequestPhase::from_bytes(&bytes[p..])?;
+
+        Ok(ThetaRequestPhase {
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            to_be_issued_commitments,
+            to_be_issued_binding_number_commitments,
+            to_be_issued_values_commitments,
+            to_be_issued_serial_numbers_commitments,
+            to_be_spent_attributes_commitments,
+            to_be_spent_serial_numbers_commitments,
+            blinded_pay,
+            range_proof_decompositions_commitments,
+            to_be_spent_signatures,
+            proof,
+        })
+    }
+}
 
 // impl ThetaSpend {
 //     fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey) -> bool {

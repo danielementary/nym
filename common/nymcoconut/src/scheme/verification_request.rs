@@ -241,7 +241,12 @@ impl TryFrom<&[u8]> for ThetaSpend {
 }
 
 impl ThetaSpend {
-    fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey, range_proof_verification_key: &VerificationKey) -> bool {
+    fn verify_proof(
+        &self,
+        params: &Parameters,
+        verification_key: &VerificationKey,
+        range_proof_verification_key: &VerificationKey,
+    ) -> bool {
         self.proof.verify(
             params,
             verification_key,
@@ -257,169 +262,241 @@ impl ThetaSpend {
         )
     }
 
-//     // number of vouchers spent || blinded messages (kappa) || blinded serial numbers (zeta) || vouchers signatures || total amount || pi_v
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         let number_of_vouchers_spent_bytes = self.number_of_vouchers_spent.to_be_bytes();
-//         let blinded_message_bytes = self
-//             .blinded_messages
-//             .iter()
-//             .map(|m| m.to_affine().to_compressed())
-//             .flatten()
-//             .collect::<Vec<u8>>();
-//         let blinded_serial_number_bytes = self
-//             .blinded_serial_numbers
-//             .iter()
-//             .map(|sn| sn.to_affine().to_compressed())
-//             .flatten()
-//             .collect::<Vec<u8>>();
-//         let blinded_spent_amount_bytes = self.blinded_spent_amount.to_affine().to_compressed();
-//         let vouchers_signatures_bytes = self
-//             .vouchers_signatures
-//             .iter()
-//             .map(|s| s.to_bytes())
-//             .flatten()
-//             .collect::<Vec<u8>>();
-//         let pi_v_bytes = self.pi_v.to_bytes();
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let number_of_to_be_issued_vouchers_bytes =
+            self.number_of_to_be_issued_vouchers.to_be_bytes();
+        let number_of_to_be_spent_vouchers_bytes =
+            self.number_of_to_be_spent_vouchers.to_be_bytes();
+        let range_proof_base_u_bytes = self.range_proof_base_u.to_be_bytes();
+        let range_proof_number_of_elements_l_bytes =
+            self.range_proof_number_of_elements_l.to_be_bytes();
 
-//         let mut bytes = Vec::with_capacity(
-//             4 + self.number_of_vouchers_spent as usize * (96 + 96 + 96) + 96 + pi_v_bytes.len(),
-//         );
+        let to_be_issued_commitment_bytes = self
+            .to_be_issued_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//         bytes.extend(number_of_vouchers_spent_bytes);
-//         bytes.extend(blinded_message_bytes);
-//         bytes.extend(blinded_serial_number_bytes);
-//         bytes.extend(blinded_spent_amount_bytes);
-//         bytes.extend(vouchers_signatures_bytes);
-//         bytes.extend(pi_v_bytes);
+        let to_be_issued_binding_number_commitments_bytes = self
+            .to_be_issued_binding_number_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//         bytes
-//     }
+        let to_be_issued_values_commitments_bytes = self
+            .to_be_issued_values_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//     pub fn from_bytes(bytes: &[u8]) -> Result<ThetaSpend> {
-//         ThetaSpend::try_from(bytes)
-//     }
-// }
+        let to_be_issued_serial_numbers_commitments_bytes = self
+            .to_be_issued_serial_numbers_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-// impl Bytable for ThetaSpend {
-//     fn to_byte_vec(&self) -> Vec<u8> {
-//         self.to_bytes()
-//     }
+        let to_be_spent_attributes_commitments_bytes = self
+            .to_be_spent_attributes_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//     fn try_from_byte_slice(slice: &[u8]) -> Result<Self> {
-//         ThetaSpend::try_from(slice)
-//     }
-// }
+        let to_be_spent_serial_numbers_commitments_bytes = self
+            .to_be_spent_serial_numbers_commitments
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-// impl Base58 for ThetaSpend {}
+        let blinded_pay_bytes = self
+            .blinded_pay
+            .iter()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-// pub fn randomise_and_prove_vouchers(
-//     params: &Parameters,
-//     verification_key: &VerificationKey,
-//     binding_number: &Scalar,
-//     values: &[Scalar],
-//     serial_numbers: &[Scalar],
-//     signatures: &[Signature],
-// ) -> Result<ThetaSpend> {
-//     if verification_key.beta_g2.len() < 3 {
-//         return Err(
-//             CoconutError::Verification(
-//                 format!("Tried to prove a credential for higher than supported by the provided verification key number of attributes (max: {}, requested: 3)",
-//                         verification_key.beta_g2.len()
-//                 )));
-//     }
+        let range_proof_decompositions_commitments_bytes = self
+            .range_proof_decompositions_commitments
+            .iter()
+            .flatten()
+            .map(|c| c.to_affine().to_compressed())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//     // Randomize the signature
-//     let (signatures_prime, signatures_blinding_factors): (Vec<Signature>, Vec<Scalar>) =
-//         signatures.iter().map(|s| s.randomise(&params)).unzip();
+        let to_be_spent_signatures_bytes = self
+            .to_be_spent_signatures
+            .iter()
+            .map(|s| s.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
 
-//     // blinded_message : kappa in the paper.
-//     // Value kappa is needed since we want to show a signature sigma'.
-//     // In order to verify sigma' we need both the verification key vk and the message m.
-//     // However, we do not want to reveal m to whomever we are showing the signature.
-//     // Thus, we need kappa which allows us to verify sigma'. In particular,
-//     // kappa is computed on m as input, but thanks to the use or random value r,
-//     // it does not reveal any information about m.
-//     let blinded_messages: Vec<_> = izip!(
-//         values.iter(),
-//         serial_numbers.iter(),
-//         signatures_blinding_factors.iter()
-//     )
-//     .map(|(v, sn, sbf)| {
-//         let private_attributes = vec![*binding_number, *v, *sn];
-//         compute_kappa(&params, &verification_key, &private_attributes, *sbf)
-//     })
-//     .collect();
+        let proof_bytes = self.proof.to_bytes();
 
-//     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-//     let blinded_serial_numbers: Vec<_> = serial_numbers
-//         .iter()
-//         .map(|sn| compute_zeta(&params, *sn))
-//         .collect();
+        let mut bytes = Vec::with_capacity(
+            number_of_to_be_issued_vouchers_bytes.len()
+                + number_of_to_be_spent_vouchers.len()
+                + range_proof_base_u_bytes.len()
+                + range_proof_number_of_elements_l.len()
+                + to_be_issued_commitment_bytes.len()
+                + to_be_issued_binding_number_commitments_bytes.len()
+                + to_be_issued_values_commitments_bytes.len()
+                + to_be_issued_serial_numbers_commitments_bytes.len()
+                + to_be_spent_attributes_commitments_bytes.len()
+                + to_be_spent_serial_numbers_commitments_bytes.len()
+                + blinded_pay_bytes.len()
+                + range_proof_decompositions_commitments_bytes.len()
+                + to_be_spent_signatures_bytes.len()
+                + pi_v_bytes.len(),
+        );
 
-//     let blinded_spent_amount = values.iter().map(|v| params.gen2() * v).sum();
+        bytes.extend(number_of_to_be_issued_vouchers_bytes);
+        bytes.extend(number_of_to_be_spent_vouchers);
+        bytes.extend(range_proof_base_u_bytes);
+        bytes.extend(range_proof_number_of_elements_l);
+        bytes.extend(to_be_issued_commitment_bytes);
+        bytes.extend(to_be_issued_binding_number_commitments_bytes);
+        bytes.extend(to_be_issued_values_commitments_bytes);
+        bytes.extend(to_be_issued_serial_numbers_commitments_bytes);
+        bytes.extend(to_be_spent_attributes_commitments_bytes);
+        bytes.extend(to_be_spent_serial_numbers_commitments_bytes);
+        bytes.extend(blinded_pay_bytes);
+        bytes.extend(range_proof_decompositions_commitments_bytes);
+        bytes.extend(to_be_spent_signatures_bytes);
+        bytes.extend(pi_v_bytes);
 
-//     let number_of_vouchers_spent = values.len() as u32;
-//     let pi_v = ProofSpend::construct(
-//         &params,
-//         &verification_key,
-//         number_of_vouchers_spent,
-//         &binding_number,
-//         &values,
-//         &serial_numbers,
-//         &signatures_blinding_factors,
-//         &blinded_messages,
-//         &blinded_serial_numbers,
-//         &blinded_spent_amount,
-//     );
+        bytes
+    }
 
-//     Ok(ThetaSpend {
-//         number_of_vouchers_spent,
-//         blinded_messages,
-//         blinded_serial_numbers,
-//         blinded_spent_amount,
-//         vouchers_signatures: signatures_prime,
-//         pi_v,
-//     })
-// }
+        pub fn from_bytes(bytes: &[u8]) -> Result<ThetaSpend> {
+            ThetaSpend::try_from(bytes)
+        }
+    }
 
-// pub fn verify_vouchers(
-//     params: &Parameters,
-//     verification_key: &VerificationKey,
-//     theta: &ThetaSpend,
-//     infos: &[Scalar],
-// ) -> bool {
-//     if verification_key.beta_g2.len() < 4 {
-//         return false;
-//     }
+    impl Bytable for ThetaSpend {
+        fn to_byte_vec(&self) -> Vec<u8> {
+            self.to_bytes()
+        }
 
-//     if !theta.verify_proof(params, verification_key) {
-//         return false;
-//     }
+        fn try_from_byte_slice(slice: &[u8]) -> Result<Self> {
+            ThetaSpend::try_from(slice)
+        }
+    }
 
-//     let blinded_messages: Vec<_> = theta
-//         .blinded_messages
-//         .iter()
-//         .zip(infos.iter())
-//         .map(|(bm, i)| bm + verification_key.beta_g2()[3] * i)
-//         .collect();
+    impl Base58 for ThetaSpend {}
 
-//     for (vs, bm) in izip!(theta.vouchers_signatures.iter(), blinded_messages.iter()) {
-//         if !check_bilinear_pairing(
-//             &vs.0.to_affine(),
-//             &G2Prepared::from(bm.to_affine()),
-//             &vs.1.to_affine(),
-//             params.prepared_miller_g2(),
-//         ) {
-//             return false;
-//         }
+    // pub fn randomise_and_prove_vouchers(
+    //     params: &Parameters,
+    //     verification_key: &VerificationKey,
+    //     binding_number: &Scalar,
+    //     values: &[Scalar],
+    //     serial_numbers: &[Scalar],
+    //     signatures: &[Signature],
+    // ) -> Result<ThetaSpend> {
+    //     if verification_key.beta_g2.len() < 3 {
+    //         return Err(
+    //             CoconutError::Verification(
+    //                 format!("Tried to prove a credential for higher than supported by the provided verification key number of attributes (max: {}, requested: 3)",
+    //                         verification_key.beta_g2.len()
+    //                 )));
+    //     }
 
-//         if bool::from(vs.0.is_identity()) {
-//             return false;
-//         }
-//     }
+    //     // Randomize the signature
+    //     let (signatures_prime, signatures_blinding_factors): (Vec<Signature>, Vec<Scalar>) =
+    //         signatures.iter().map(|s| s.randomise(&params)).unzip();
 
-//     true
-// }
+    //     // blinded_message : kappa in the paper.
+    //     // Value kappa is needed since we want to show a signature sigma'.
+    //     // In order to verify sigma' we need both the verification key vk and the message m.
+    //     // However, we do not want to reveal m to whomever we are showing the signature.
+    //     // Thus, we need kappa which allows us to verify sigma'. In particular,
+    //     // kappa is computed on m as input, but thanks to the use or random value r,
+    //     // it does not reveal any information about m.
+    //     let blinded_messages: Vec<_> = izip!(
+    //         values.iter(),
+    //         serial_numbers.iter(),
+    //         signatures_blinding_factors.iter()
+    //     )
+    //     .map(|(v, sn, sbf)| {
+    //         let private_attributes = vec![*binding_number, *v, *sn];
+    //         compute_kappa(&params, &verification_key, &private_attributes, *sbf)
+    //     })
+    //     .collect();
+
+    //     // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
+    //     let blinded_serial_numbers: Vec<_> = serial_numbers
+    //         .iter()
+    //         .map(|sn| compute_zeta(&params, *sn))
+    //         .collect();
+
+    //     let blinded_spent_amount = values.iter().map(|v| params.gen2() * v).sum();
+
+    //     let number_of_vouchers_spent = values.len() as u32;
+    //     let pi_v = ProofSpend::construct(
+    //         &params,
+    //         &verification_key,
+    //         number_of_vouchers_spent,
+    //         &binding_number,
+    //         &values,
+    //         &serial_numbers,
+    //         &signatures_blinding_factors,
+    //         &blinded_messages,
+    //         &blinded_serial_numbers,
+    //         &blinded_spent_amount,
+    //     );
+
+    //     Ok(ThetaSpend {
+    //         number_of_vouchers_spent,
+    //         blinded_messages,
+    //         blinded_serial_numbers,
+    //         blinded_spent_amount,
+    //         vouchers_signatures: signatures_prime,
+    //         pi_v,
+    //     })
+    // }
+
+    // pub fn verify_vouchers(
+    //     params: &Parameters,
+    //     verification_key: &VerificationKey,
+    //     theta: &ThetaSpend,
+    //     infos: &[Scalar],
+    // ) -> bool {
+    //     if verification_key.beta_g2.len() < 4 {
+    //         return false;
+    //     }
+
+    //     if !theta.verify_proof(params, verification_key) {
+    //         return false;
+    //     }
+
+    //     let blinded_messages: Vec<_> = theta
+    //         .blinded_messages
+    //         .iter()
+    //         .zip(infos.iter())
+    //         .map(|(bm, i)| bm + verification_key.beta_g2()[3] * i)
+    //         .collect();
+
+    //     for (vs, bm) in izip!(theta.vouchers_signatures.iter(), blinded_messages.iter()) {
+    //         if !check_bilinear_pairing(
+    //             &vs.0.to_affine(),
+    //             &G2Prepared::from(bm.to_affine()),
+    //             &vs.1.to_affine(),
+    //             params.prepared_miller_g2(),
+    //         ) {
+    //             return false;
+    //         }
+
+    //         if bool::from(vs.0.is_identity()) {
+    //             return false;
+    //         }
+    //     }
+
+    //     true
+}
 
 // #[cfg(test)]
 // mod tests {

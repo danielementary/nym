@@ -17,8 +17,6 @@ use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
 use crate::utils::try_deserialize_g2_projective;
 
-// TODO NAMING: this whole thing
-// ThetaSpend
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ThetaSpend {

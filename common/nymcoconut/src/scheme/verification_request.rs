@@ -240,16 +240,22 @@ impl TryFrom<&[u8]> for ThetaSpend {
     }
 }
 
-// impl ThetaSpend {
-//     fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey) -> bool {
-//         self.pi_v.verify(
-//             params,
-//             verification_key,
-//             &self.blinded_messages,
-//             &self.blinded_serial_numbers,
-//             &self.blinded_spent_amount,
-//         )
-//     }
+impl ThetaSpend {
+    fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey, range_proof_verification_key: &VerificationKey) -> bool {
+        self.proof.verify(
+            params,
+            verification_key,
+            range_proof_verification_key,
+            &self.to_be_issued_commitments,
+            &self.to_be_issued_binding_number_commitments,
+            &self.to_be_issued_values_commitments,
+            &self.to_be_issued_serial_numbers_commitments,
+            &self.to_be_spent_attributes_commitments,
+            &self.to_be_spent_serial_numbers_commitments,
+            &self.blinded_pay,
+            &self.range_proof_decompositions_commitments,
+        )
+    }
 
 //     // number of vouchers spent || blinded messages (kappa) || blinded serial numbers (zeta) || vouchers signatures || total amount || pi_v
 //     pub fn to_bytes(&self) -> Vec<u8> {

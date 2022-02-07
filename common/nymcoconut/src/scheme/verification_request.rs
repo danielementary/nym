@@ -21,10 +21,10 @@ use crate::utils::try_deserialize_g2_projective;
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ThetaRequestPhase {
     // parameters
-    number_of_to_be_issued_vouchers: usize,
-    number_of_to_be_spent_vouchers: usize,
-    range_proof_base_u: usize,
-    range_proof_number_of_elements_l: usize,
+    number_of_to_be_issued_vouchers: u8,
+    number_of_to_be_spent_vouchers: u8,
+    range_proof_base_u: u8,
+    range_proof_number_of_elements_l: u8,
     // commitments
     to_be_issued_commitments: Vec<G1Projective>,
     to_be_issued_binding_number_commitments: Vec<G1Projective>,

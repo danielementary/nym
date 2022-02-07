@@ -808,10 +808,10 @@ impl ProofSpend {
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ProofRequestPhase {
-    number_of_to_be_issued_vouchers: usize,
-    number_of_to_be_spent_vouchers: usize,
-    range_proof_base_u: usize,
-    range_proof_number_of_elements_l: usize,
+    number_of_to_be_issued_vouchers: u8,
+    number_of_to_be_spent_vouchers: u8,
+    range_proof_base_u: u8,
+    range_proof_number_of_elements_l: u8,
     // c
     challenge: Scalar,
     // responses
@@ -836,10 +836,10 @@ impl ProofRequestPhase {
         params: &Parameters,
         verification_key: &VerificationKey,
         range_proof_verification_key: &VerificationKey,
-        number_of_to_be_issued_vouchers: usize,
-        number_of_to_be_spent_vouchers: usize,
-        range_proof_base_u: usize,
-        range_proof_number_of_elements_l: usize,
+        number_of_to_be_issued_vouchers: u8,
+        number_of_to_be_spent_vouchers: u8,
+        range_proof_base_u: u8,
+        range_proof_number_of_elements_l: u8,
         // secrets
         binding_number: &Scalar,
         // to be issued
@@ -874,7 +874,7 @@ impl ProofRequestPhase {
         let witness_binding_number = params.random_scalar();
         let witnesses_to_be_issued_values_decompositions: Vec<Vec<Scalar>> = (0
             ..number_of_to_be_issued_vouchers)
-            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l))
+            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l as usize))
             .collect();
         let witnesses_to_be_issued_serial_numbers =
             params.n_random_scalars(to_be_issued_serial_numbers.len());
@@ -891,7 +891,7 @@ impl ProofRequestPhase {
             params.n_random_scalars(to_be_spent_serial_numbers.len());
         let witnesses_to_be_spent_blinders = params.n_random_scalars(to_be_spent_blinders.len());
         let witnesses_range_proof_blinders: Vec<Vec<Scalar>> = (0..number_of_to_be_issued_vouchers)
-            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l))
+            .map(|_| params.n_random_scalars(range_proof_number_of_elements_l as usize))
             .collect();
 
         // witnesses commitments

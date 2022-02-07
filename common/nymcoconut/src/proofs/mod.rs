@@ -1315,7 +1315,7 @@ impl ProofRequestPhase {
             .map(|commitment| hash_g1(commitment.to_bytes()))
             .collect();
 
-        let to_be_issued_witnesses_commitments = izip!(
+        let to_be_issued_witnesses_commitments: Vec<G1Projective> = izip!(
             to_be_issued_commitments.iter(),
             self.responses_to_be_issued_commitments_openings.iter(),
             self.responses_to_be_issued_values_decompositions.iter(),
@@ -1347,7 +1347,7 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        let to_be_issued_witnesses_binding_numbers_commitments = izip!(
+        let to_be_issued_witnesses_binding_numbers_commitments: Vec<G1Projective> = izip!(
             to_be_issued_binding_number_commitments.iter(),
             self.responses_to_be_issued_binding_numbers_openings.iter(),
             to_be_issued_hm_s.iter()
@@ -1356,12 +1356,12 @@ impl ProofRequestPhase {
             |(to_be_issued_binding_number_commitment, response_opening, hm)| {
                 to_be_issued_binding_number_commitment * self.challenge
                     + params.gen1() * response_opening
-                    + hm * self.response_serial_number
+                    + hm * self.response_binding_number
             },
         )
         .collect();
 
-        let to_be_issued_witnesses_values_commitments = izip!(
+        let to_be_issued_witnesses_values_commitments: Vec<G1Projective> = izip!(
             to_be_issued_values_commitments.iter(),
             self.responses_to_be_issued_values_openings.iter(),
             to_be_issued_hm_s.iter(),
@@ -1381,14 +1381,16 @@ impl ProofRequestPhase {
                         .enumerate()
                         .map(|(index, response_value_decomposition)| {
                             hm * response_value_decomposition
-                                + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                                + hm * (Scalar::from(
+                                    (self.range_proof_base_u as u64).pow(index as u32),
+                                ))
                         })
                         .sum::<G1Projective>()
             },
         )
         .collect();
 
-        let to_be_issued_witnesses_serial_numbers_commitments = izip!(
+        let to_be_issued_witnesses_serial_numbers_commitments: Vec<G1Projective> = izip!(
             to_be_issued_serial_numbers_commitments.iter(),
             self.responses_to_be_issued_serial_numbers_openings.iter(),
             to_be_issued_hm_s.iter(),
@@ -1408,7 +1410,7 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        let to_be_spent_witnesses_attributes_commitments = izip!(
+        let to_be_spent_witnesses_attributes_commitments: Vec<G2Projective> = izip!(
             to_be_spent_attributes_commitments.iter(),
             self.responses_to_be_spent_values.iter(),
             self.responses_to_be_spent_serial_numbers.iter(),
@@ -1431,7 +1433,7 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        let to_be_spent_witnesses_serial_numbers_commitments = izip!(
+        let to_be_spent_witnesses_serial_numbers_commitments: Vec<G2Projective> = izip!(
             to_be_spent_serial_numbers_commitments.iter(),
             self.responses_to_be_spent_serial_numbers.iter()
         )
@@ -1443,7 +1445,7 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        let witnesses_blinded_pay = blinded_pay * self.challenge
+        let witnesses_blinded_pay: G2Projective = blinded_pay * self.challenge
             + self
                 .responses_to_be_issued_values_decompositions
                 .iter()
@@ -1454,17 +1456,20 @@ impl ProofRequestPhase {
                         .map(|(index, response_value_decomposition)| {
                             params.hs2()[1] * response_value_decomposition
                                 + params.hs2()[1]
-                                    * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                                    * (Scalar::from(
+                                        (self.range_proof_base_u as u64).pow(index as u32),
+                                    ))
                         })
                         .sum::<G2Projective>()
                 })
                 .sum::<G2Projective>()
-            - responses_to_be_spent_values
+            - self
+                .responses_to_be_spent_values
                 .iter()
                 .map(|value| params.hs2()[1] * value)
                 .sum::<G2Projective>();
 
-        let range_proof_witnesses_decomposition_commitments = izip!(
+        let range_proof_witnesses_decomposition_commitments: Vec<Vec<G2Projective>> = izip!(
             range_proof_decompositions_commitments.iter(),
             self.responses_to_be_issued_values_decompositions.iter(),
             self.responses_range_proof_blinders.iter()
@@ -1499,7 +1504,199 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        false
+        // recompute challenge
+        let gen1_bytes = vec![params.gen1().to_bytes()];
+        let gen2_bytes = vec![params.gen2().to_bytes()];
+        let hs1_bytes = params
+            .hs1()
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let hs2_bytes = params
+            .hs2()
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let mut verification_key_bytes = verification_key
+            .beta_g2()
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        verification_key_bytes.push(verification_key.alpha().to_bytes());
+        let mut range_proof_verification_key_bytes = range_proof_verification_key
+            .beta_g2()
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        range_proof_verification_key_bytes.push(range_proof_verification_key.alpha().to_bytes());
+        let numbers_of_vouchers_bytes = vec![
+            self.number_of_to_be_issued_vouchers.to_be_bytes(),
+            self.number_of_to_be_spent_vouchers.to_be_bytes(),
+        ];
+        let range_proof_parameters_bytes = vec![
+            self.range_proof_base_u.to_be_bytes(),
+            self.range_proof_number_of_elements_l.to_be_bytes(),
+        ];
+
+        let to_be_issued_witnesses_commitments_bytes = to_be_issued_witnesses_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_issued_witnesses_binding_numbers_commitments_bytes =
+            to_be_issued_witnesses_binding_numbers_commitments
+                .iter()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+        let to_be_issued_witnesses_values_commitments_bytes =
+            to_be_issued_witnesses_values_commitments
+                .iter()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+        let to_be_issued_witnesses_serial_numbers_commitments_bytes =
+            to_be_issued_witnesses_serial_numbers_commitments
+                .iter()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+        let to_be_spent_witnesses_attributes_commitments_bytes =
+            to_be_spent_witnesses_attributes_commitments
+                .iter()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+        let to_be_spent_witnesses_serial_numbers_commitments_bytes =
+            to_be_spent_witnesses_serial_numbers_commitments
+                .iter()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+        let witnesses_blinded_pay_bytes = vec![witnesses_blinded_pay.to_bytes()];
+        let range_proof_witnesses_decomposition_commitments_bytes =
+            range_proof_witnesses_decomposition_commitments
+                .iter()
+                .flatten()
+                .map(|v| v.to_bytes())
+                .collect::<Vec<_>>();
+
+        let to_be_issued_commitments_bytes = to_be_issued_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_issued_hm_s_bytes = to_be_issued_hm_s
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_issued_binding_number_commitments_bytes = to_be_issued_binding_number_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_issued_values_commitments_bytes = to_be_issued_values_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_issued_serial_numbers_commitments_bytes = to_be_issued_serial_numbers_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_spent_attributes_commitments_bytes = to_be_spent_attributes_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let to_be_spent_serial_numbers_commitments_bytes = to_be_spent_serial_numbers_commitments
+            .iter()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+        let blinded_pay_bytes = vec![blinded_pay.to_bytes()];
+        let range_proof_decompositions_commitments_bytes = range_proof_decompositions_commitments
+            .iter()
+            .flatten()
+            .map(|v| v.to_bytes())
+            .collect::<Vec<_>>();
+
+        let challenge = compute_challenge::<ChallengeDigest, _, _>(
+            gen1_bytes
+                .iter()
+                .map(|v| v.as_ref())
+                .chain(gen2_bytes.iter().map(|v| v.as_ref()))
+                .chain(hs1_bytes.iter().map(|v| v.as_ref()))
+                .chain(hs2_bytes.iter().map(|v| v.as_ref()))
+                .chain(verification_key_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_verification_key_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(numbers_of_vouchers_bytes.iter().map(|v| v.as_ref()))
+                .chain(range_proof_parameters_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_witnesses_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_binding_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_witnesses_decomposition_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(to_be_issued_commitments_bytes.iter().map(|v| v.as_ref()))
+                .chain(to_be_issued_hm_s_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_binding_number_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_decompositions_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                ),
+        );
+
+        challenge == self.challenge
     }
 }
 

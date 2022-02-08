@@ -1698,6 +1698,310 @@ impl ProofRequestPhase {
 
         challenge == self.challenge
     }
+
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let number_of_to_be_issued_vouchers_bytes =
+            self.number_of_to_be_issued_vouchers.to_be_bytes();
+        let number_of_to_be_spent_vouchers_bytes =
+            self.number_of_to_be_spent_vouchers.to_be_bytes();
+        let range_proof_base_u_bytes = self.range_proof_base_u.to_be_bytes();
+        let range_proof_number_of_elements_l_bytes =
+            self.range_proof_number_of_elements_l.to_be_bytes();
+
+        let challenge_bytes = self.challenge.to_bytes();
+
+        let response_binding_number_bytes = self.response_binding_number.to_bytes();
+
+        let responses_to_be_issued_values_decompositions_bytes = self
+            .responses_to_be_issued_values_decompositions
+            .iter()
+            .flatten()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_issued_serial_numbers_bytes = self
+            .responses_to_be_issued_serial_numbers
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_issued_commitments_openings_bytes = self
+            .responses_to_be_issued_commitments_openings
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_issued_binding_numbers_openings_bytes = self
+            .responses_to_be_issued_binding_numbers_openings
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_issued_values_openings_bytes = self
+            .responses_to_be_issued_values_openings
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_issued_serial_numbers_openings_bytes = self
+            .responses_to_be_issued_serial_numbers_openings
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+
+        let responses_to_be_spent_values_bytes = self
+            .responses_to_be_spent_values
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_spent_serial_numbers_bytes = self
+            .responses_to_be_spent_serial_numbers
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let responses_to_be_spent_blinders_bytes = self
+            .responses_to_be_spent_blinders
+            .iter()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+
+        let responses_range_proof_blinders_bytes = self
+            .responses_range_proof_blinders
+            .iter()
+            .flatten()
+            .map(|v| v.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+
+        let mut bytes = Vec::with_capacity(
+            number_of_to_be_issued_vouchers_bytes.len()
+                + number_of_to_be_spent_vouchers_bytes.len()
+                + range_proof_base_u_bytes.len()
+                + range_proof_number_of_elements_l_bytes.len()
+                + challenge_bytes.len()
+                + response_binding_number_bytes.len()
+                + responses_to_be_issued_values_decompositions_bytes.len()
+                + responses_to_be_issued_serial_numbers_bytes.len()
+                + responses_to_be_issued_commitments_openings_bytes.len()
+                + responses_to_be_issued_binding_numbers_openings_bytes.len()
+                + responses_to_be_issued_values_openings_bytes.len()
+                + responses_to_be_issued_serial_numbers_openings_bytes.len()
+                + responses_to_be_spent_values_bytes.len()
+                + responses_to_be_spent_serial_numbers_bytes.len()
+                + responses_to_be_spent_blinders_bytes.len()
+                + responses_range_proof_blinders_bytes.len(),
+        );
+
+        bytes.extend(number_of_to_be_issued_vouchers_bytes);
+        bytes.extend(number_of_to_be_spent_vouchers_bytes);
+        bytes.extend(range_proof_base_u_bytes);
+        bytes.extend(range_proof_number_of_elements_l_bytes);
+        bytes.extend(challenge_bytes);
+        bytes.extend(response_binding_number_bytes);
+        bytes.extend(responses_to_be_issued_values_decompositions_bytes);
+        bytes.extend(responses_to_be_issued_serial_numbers_bytes);
+        bytes.extend(responses_to_be_issued_commitments_openings_bytes);
+        bytes.extend(responses_to_be_issued_binding_numbers_openings_bytes);
+        bytes.extend(responses_to_be_issued_values_openings_bytes);
+        bytes.extend(responses_to_be_issued_serial_numbers_openings_bytes);
+        bytes.extend(responses_to_be_spent_values_bytes);
+        bytes.extend(responses_to_be_spent_serial_numbers_bytes);
+        bytes.extend(responses_to_be_spent_blinders_bytes);
+        bytes.extend(responses_range_proof_blinders_bytes);
+
+        bytes
+    }
+
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let mut p = 0;
+        let mut p_prime = 1;
+        let number_of_to_be_issued_vouchers =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+
+        p = p_prime;
+        p_prime += 1;
+        let number_of_to_be_spent_vouchers =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+
+        p = p_prime;
+        p_prime += 1;
+        let range_proof_base_u = u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+
+        p = p_prime;
+        p_prime += 1;
+        let range_proof_number_of_elements_l =
+            u8::from_be_bytes(bytes[p..p_prime].try_into().unwrap());
+
+        p = p_prime;
+        p_prime += 32;
+        let challenge_bytes = &bytes[p..p_prime].try_into().unwrap();
+        let challenge = try_deserialize_scalar(
+            challenge_bytes,
+            CoconutError::Deserialization("failed to deserialize the challenge".to_string()),
+        )?;
+
+        p = p_prime;
+        p_prime += 32;
+        let response_binding_number_bytes = &bytes[p..p_prime].try_into().unwrap();
+        let response_binding_number = try_deserialize_scalar(
+            response_binding_number_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the response binding number".to_string(),
+            ),
+        )?;
+
+        let mut responses_to_be_issued_values_decompositions =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 32 * range_proof_number_of_elements_l as usize;
+
+            let responses_to_be_issued_values_decompositions_temp_bytes = &bytes[p..p_prime];
+            let responses_to_be_issued_values_decompositions_temp = try_deserialize_scalar_vec(
+                range_proof_number_of_elements_l as u64,
+                &responses_to_be_issued_values_decompositions_temp_bytes,
+                CoconutError::Deserialization(
+                    "failed to deserialize the responses to be issued values decompositions"
+                        .to_string(),
+                ),
+            )?;
+
+            responses_to_be_issued_values_decompositions
+                .push(responses_to_be_issued_values_decompositions_temp);
+        }
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_issued_vouchers as usize;
+        let responses_to_be_issued_serial_numbers_bytes = &bytes[p..p_prime];
+        let responses_to_be_issued_serial_numbers = try_deserialize_scalar_vec(
+            number_of_to_be_issued_vouchers as u64,
+            &responses_to_be_issued_serial_numbers_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be issued serial numbers".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_issued_vouchers as usize;
+        let responses_to_be_issued_commitments_openings_bytes = &bytes[p..p_prime];
+        let responses_to_be_issued_commitments_openings = try_deserialize_scalar_vec(
+            number_of_to_be_issued_vouchers as u64,
+            &responses_to_be_issued_commitments_openings_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be issued commitments openings".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_issued_vouchers as usize;
+        let responses_to_be_issued_binding_numbers_openings_bytes = &bytes[p..p_prime];
+        let responses_to_be_issued_binding_numbers_openings = try_deserialize_scalar_vec(
+            number_of_to_be_issued_vouchers as u64,
+            &responses_to_be_issued_binding_numbers_openings_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be issued binding numbers openings"
+                    .to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_issued_vouchers as usize;
+        let responses_to_be_issued_values_openings_bytes = &bytes[p..p_prime];
+        let responses_to_be_issued_values_openings = try_deserialize_scalar_vec(
+            number_of_to_be_issued_vouchers as u64,
+            &responses_to_be_issued_values_openings_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be issued values openings".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_issued_vouchers as usize;
+        let responses_to_be_issued_serial_numbers_openings_bytes = &bytes[p..p_prime];
+        let responses_to_be_issued_serial_numbers_openings = try_deserialize_scalar_vec(
+            number_of_to_be_issued_vouchers as u64,
+            &responses_to_be_issued_serial_numbers_openings_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be issued serial numbers openings"
+                    .to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_spent_vouchers as usize;
+        let responses_to_be_spent_values_bytes = &bytes[p..p_prime];
+        let responses_to_be_spent_values = try_deserialize_scalar_vec(
+            number_of_to_be_spent_vouchers as u64,
+            &responses_to_be_spent_values_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be spent values".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_spent_vouchers as usize;
+        let responses_to_be_spent_serial_numbers_bytes = &bytes[p..p_prime];
+        let responses_to_be_spent_serial_numbers = try_deserialize_scalar_vec(
+            number_of_to_be_spent_vouchers as u64,
+            &responses_to_be_spent_serial_numbers_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be spent serial numbers".to_string(),
+            ),
+        )?;
+
+        p = p_prime;
+        p_prime += 32 * number_of_to_be_spent_vouchers as usize;
+        let responses_to_be_spent_blinders_bytes = &bytes[p..p_prime];
+        let responses_to_be_spent_blinders = try_deserialize_scalar_vec(
+            number_of_to_be_spent_vouchers as u64,
+            &responses_to_be_spent_blinders_bytes,
+            CoconutError::Deserialization(
+                "failed to deserialize the responses to be spent blinders".to_string(),
+            ),
+        )?;
+
+        let mut responses_range_proof_blinders =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            p = p_prime;
+            p_prime += 32 * range_proof_number_of_elements_l as usize;
+
+            let responses_to_be_issued_blinders_temp_bytes = &bytes[p..p_prime];
+            let responses_to_be_issued_blinders_temp = try_deserialize_scalar_vec(
+                range_proof_number_of_elements_l as u64,
+                &responses_to_be_issued_blinders_temp_bytes,
+                CoconutError::Deserialization(
+                    "failed to deserialize the responses to be issued range proof blinders"
+                        .to_string(),
+                ),
+            )?;
+
+            responses_range_proof_blinders.push(responses_to_be_issued_blinders_temp);
+        }
+
+        Ok(ProofRequestPhase {
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            challenge,
+            response_binding_number,
+            responses_to_be_issued_values_decompositions,
+            responses_to_be_issued_serial_numbers,
+            responses_to_be_issued_commitments_openings,
+            responses_to_be_issued_binding_numbers_openings,
+            responses_to_be_issued_values_openings,
+            responses_to_be_issued_serial_numbers_openings,
+            responses_to_be_spent_values,
+            responses_to_be_spent_serial_numbers,
+            responses_to_be_spent_blinders,
+            responses_range_proof_blinders,
+        })
+    }
 }
 
 // proof builder:

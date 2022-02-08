@@ -19,7 +19,7 @@ use crate::utils::try_deserialize_g2_projective;
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct ThetaSpend {
+pub struct ThetaSpendPhase {
     pub number_of_vouchers_spent: u32,
     // blinded messages (kappas)
     pub blinded_messages: Vec<G2Projective>,
@@ -33,15 +33,15 @@ pub struct ThetaSpend {
     pub pi_v: ProofSpend,
 }
 
-impl TryFrom<&[u8]> for ThetaSpend {
+impl TryFrom<&[u8]> for ThetaSpendPhase {
     type Error = CoconutError;
 
-    fn try_from(bytes: &[u8]) -> Result<ThetaSpend> {
+    fn try_from(bytes: &[u8]) -> Result<ThetaSpendPhase> {
         // 4 + 96 + 96 + 96 + 96 + ? >= 388
         if bytes.len() < 388 {
             return Err(
                 CoconutError::Deserialization(
-                    format!("Tried to deserialize ThetaSpend with insufficient number of bytes, expected >= 388, got {}", bytes.len()),
+                    format!("Tried to deserialize ThetaSpendPhase with insufficient number of bytes, expected >= 388, got {}", bytes.len()),
                 ));
         }
 
@@ -104,7 +104,7 @@ impl TryFrom<&[u8]> for ThetaSpend {
         p = p_prime;
         let pi_v = ProofSpend::from_bytes(&bytes[p..])?;
 
-        Ok(ThetaSpend {
+        Ok(ThetaSpendPhase {
             number_of_vouchers_spent,
             blinded_messages,
             blinded_serial_numbers,
@@ -115,7 +115,7 @@ impl TryFrom<&[u8]> for ThetaSpend {
     }
 }
 
-impl ThetaSpend {
+impl ThetaSpendPhase {
     fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey) -> bool {
         self.pi_v.verify(
             params,
@@ -164,31 +164,31 @@ impl ThetaSpend {
         bytes
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<ThetaSpend> {
-        ThetaSpend::try_from(bytes)
+    pub fn from_bytes(bytes: &[u8]) -> Result<ThetaSpendPhase> {
+        ThetaSpendPhase::try_from(bytes)
     }
 }
 
-impl Bytable for ThetaSpend {
+impl Bytable for ThetaSpendPhase {
     fn to_byte_vec(&self) -> Vec<u8> {
         self.to_bytes()
     }
 
     fn try_from_byte_slice(slice: &[u8]) -> Result<Self> {
-        ThetaSpend::try_from(slice)
+        ThetaSpendPhase::try_from(slice)
     }
 }
 
-impl Base58 for ThetaSpend {}
+impl Base58 for ThetaSpendPhase {}
 
-pub fn randomise_and_prove_vouchers(
+pub fn randomise_and_spend_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
     binding_number: &Scalar,
     values: &[Scalar],
     serial_numbers: &[Scalar],
     signatures: &[Signature],
-) -> Result<ThetaSpend> {
+) -> Result<ThetaSpendPhase> {
     if verification_key.beta_g2.len() < 3 {
         return Err(
             CoconutError::Verification(
@@ -241,7 +241,7 @@ pub fn randomise_and_prove_vouchers(
         &blinded_spent_amount,
     );
 
-    Ok(ThetaSpend {
+    Ok(ThetaSpendPhase {
         number_of_vouchers_spent,
         blinded_messages,
         blinded_serial_numbers,
@@ -251,10 +251,10 @@ pub fn randomise_and_prove_vouchers(
     })
 }
 
-pub fn verify_vouchers(
+pub fn verify_spent_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
-    theta: &ThetaSpend,
+    theta: &ThetaSpendPhase,
     infos: &[Scalar],
 ) -> bool {
     if verification_key.beta_g2.len() < 4 {
@@ -325,7 +325,7 @@ mod tests {
         .unwrap();
 
         let bytes = theta.to_bytes();
-        assert_eq!(ThetaSpend::try_from(bytes.as_slice()).unwrap(), theta);
+        assert_eq!(ThetaSpendPhase::try_from(bytes.as_slice()).unwrap(), theta);
 
         // test three vouchers
         let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
@@ -360,6 +360,6 @@ mod tests {
         .unwrap();
 
         let bytes = theta.to_bytes();
-        assert_eq!(ThetaSpend::try_from(bytes.as_slice()).unwrap(), theta);
+        assert_eq!(ThetaSpendPhase::try_from(bytes.as_slice()).unwrap(), theta);
     }
 }

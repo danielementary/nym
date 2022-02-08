@@ -23,6 +23,7 @@ pub mod issuance;
 pub mod keygen;
 pub mod setup;
 pub mod verification;
+pub mod verification_request;
 pub mod verification_spend;
 
 pub type SignerIndex = u64;

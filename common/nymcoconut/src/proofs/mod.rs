@@ -2020,7 +2020,6 @@ mod tests {
 
     use super::*;
 
-    // TODO check this test
     #[test]
     fn proof_cm_cs_bytes_roundtrip() {
         // we don't care about 'correctness' of the proof. only whether we can correctly recover it from bytes
@@ -2178,5 +2177,145 @@ mod tests {
         let proof_from_bytes = ProofSpend::from_bytes(&proof_bytes).unwrap();
 
         assert_eq!(proof_from_bytes, pi_v);
+    }
+
+    #[test]
+    fn proof_request_phase_bytes_roundtrip() {
+        let params = setup(4).unwrap();
+
+        let keypair = keygen(&params);
+        let verification_key = keypair.verification_key();
+        let range_proof_keypair = keygen(&params);
+        let range_proof_verification_key = range_proof_keypair.verification_key();
+
+        let number_of_to_be_issued_vouchers: u8 = 3;
+        let number_of_to_be_spent_vouchers: u8 = 5;
+        let range_proof_base_u: u8 = 8;
+        let range_proof_number_of_elements_l: u8 = 4;
+
+        let binding_number = params.random_scalar();
+
+        let mut to_be_issued_values_decompositions =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
+            to_be_issued_values_decompositions.push(temp);
+        }
+        let to_be_issued_serial_numbers =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+        let to_be_issued_commitments_openings =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+        let to_be_issued_binding_numbers_openings =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+        let to_be_issued_values_openings =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+        let to_be_issued_serial_numbers_openings =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+
+        let to_be_spent_values = params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
+        let to_be_spent_serial_numbers =
+            params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
+        let to_be_spent_blinders = params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
+
+        let mut range_proof_blinders = Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for i in 0..number_of_to_be_issued_vouchers {
+            let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
+            range_proof_blinders.push(temp);
+        }
+
+        let to_be_issued_commitments = [
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+        ];
+        let to_be_issued_binding_number_commitments = [
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+        ];
+
+        let to_be_issued_values_commitments = [
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+        ];
+
+        let to_be_issued_serial_numbers_commitments = [
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+            params.gen1() * params.random_scalar(),
+        ];
+
+        let to_be_spent_attributes_commitments = [
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+        ];
+
+        let to_be_spent_serial_numbers_commitments = [
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+            params.gen2() * params.random_scalar(),
+        ];
+
+        let blinded_pay = params.gen2() * params.random_scalar();
+        let range_proof_decompositions_commitments = [
+            vec![
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+            ],
+            vec![
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+            ],
+            vec![
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+                params.gen2() * params.random_scalar(),
+            ],
+        ];
+
+        let proof = ProofRequestPhase::construct(
+            &params,
+            &verification_key,
+            &range_proof_verification_key,
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            &binding_number,
+            &to_be_issued_values_decompositions,
+            &to_be_issued_serial_numbers,
+            &to_be_issued_commitments_openings,
+            &to_be_issued_binding_numbers_openings,
+            &to_be_issued_values_openings,
+            &to_be_issued_serial_numbers_openings,
+            &to_be_spent_values,
+            &to_be_spent_serial_numbers,
+            &to_be_spent_blinders,
+            &range_proof_blinders,
+            &to_be_issued_commitments,
+            &to_be_issued_binding_number_commitments,
+            &to_be_issued_values_commitments,
+            &to_be_issued_serial_numbers_commitments,
+            &to_be_spent_attributes_commitments,
+            &to_be_spent_serial_numbers_commitments,
+            &blinded_pay,
+            &range_proof_decompositions_commitments,
+        );
+
+        let proof_bytes = proof.to_bytes();
+        let proof_from_bytes = ProofRequestPhase::from_bytes(&proof_bytes).unwrap();
+
+        assert_eq!(proof_from_bytes, proof);
     }
 }

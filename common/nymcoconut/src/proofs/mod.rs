@@ -2197,7 +2197,7 @@ mod tests {
 
         let mut to_be_issued_values_decompositions =
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
-        for i in 0..number_of_to_be_issued_vouchers {
+        for _ in 0..number_of_to_be_issued_vouchers {
             let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
             to_be_issued_values_decompositions.push(temp);
         }
@@ -2218,7 +2218,7 @@ mod tests {
         let to_be_spent_blinders = params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
 
         let mut range_proof_blinders = Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
-        for i in 0..number_of_to_be_issued_vouchers {
+        for _ in 0..number_of_to_be_issued_vouchers {
             let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
             range_proof_blinders.push(temp);
         }

@@ -66,7 +66,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
         for i in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
-            p_prime += 96;
+            p_prime += 48;
 
             let to_be_issued_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
             let to_be_issued_commitment = try_deserialize_g1_projective(
@@ -84,7 +84,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
         for i in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
-            p_prime += 96;
+            p_prime += 48;
 
             let to_be_issued_binding_number_commitment_bytes =
                 bytes[p..p_prime].try_into().unwrap();
@@ -103,7 +103,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
         for i in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
-            p_prime += 96;
+            p_prime += 48;
 
             let to_be_issued_values_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
             let to_be_issued_values_commitment = try_deserialize_g1_projective(
@@ -121,7 +121,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
         for i in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
-            p_prime += 96;
+            p_prime += 48;
 
             let to_be_issued_serial_numbers_commitment_bytes =
                 bytes[p..p_prime].try_into().unwrap();
@@ -676,76 +676,106 @@ pub fn randomise_and_request_vouchers(
 //     true
 // }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::scheme::keygen::keygen;
-//     use crate::scheme::setup::setup;
+#[cfg(test)]
+mod tests {
+    use crate::scheme::keygen::keygen;
+    use crate::scheme::setup::setup;
 
-//     use super::*;
+    use super::*;
 
-//     #[test]
-//     fn theta_bytes_roundtrip() {
-//         let params = setup(4).unwrap();
+    #[test]
+    fn theta_request_phase_bytes_roundtrip() {
+        // pub fn randomise_and_request_vouchers(
+        //     params: &Parameters,
+        //     verification_key: &VerificationKey,
+        //     range_proof_verification_key: &VerificationKey,
+        //     number_of_to_be_issued_vouchers: u8,
+        //     number_of_to_be_spent_vouchers: u8,
+        //     range_proof_base_u: u8,
+        //     range_proof_number_of_elements_l: u8,
+        //     // secrets
+        //     binding_number: &Scalar,
+        //     // to be issued
+        //     to_be_issued_values: &[Scalar],
+        //     to_be_issued_serial_numbers: &[Scalar],
+        //     // to be spent
+        //     to_be_spent_values: &[Scalar],
+        //     to_be_spent_serial_numbers: &[Scalar],
+        //     // vouchers
+        //     to_be_spent_signatures: &[Signature],
+        // ) -> Result<ThetaRequestPhase> {
+        let params = setup(4).unwrap();
 
-//         let keypair = keygen(&params);
-//         let verification_key = keypair.verification_key();
+        let keypair = keygen(&params);
+        let verification_key = keypair.verification_key();
+        let range_proof_keypair = keygen(&params);
+        let range_proof_verification_key = keypair.verification_key();
 
-//         let binding_number = params.random_scalar();
+        let number_of_to_be_issued_vouchers: u8 = 3;
+        let number_of_to_be_spent_vouchers: u8 = 5;
+        let range_proof_base_u: u8 = 8;
+        let range_proof_number_of_elements_l: u8 = 4;
 
-//         // test one voucher
-//         let values = [Scalar::from(10)];
-//         let serial_numbers = [params.random_scalar()];
-//         let signatures = [Signature(
-//             params.gen1() * params.random_scalar(),
-//             params.gen1() * params.random_scalar(),
-//         )];
+        let binding_number = params.random_scalar();
 
-//         let theta = randomise_and_prove_vouchers(
-//             &params,
-//             &verification_key,
-//             &binding_number,
-//             &values,
-//             &serial_numbers,
-//             &signatures,
-//         )
-//         .unwrap();
+        let to_be_issued_values = [Scalar::from(10), Scalar::from(10), Scalar::from(5)];
+        let to_be_issued_serial_numbers =
+            params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
 
-//         let bytes = theta.to_bytes();
-//         assert_eq!(ThetaRequestPhase::try_from(bytes.as_slice()).unwrap(), theta);
+        let to_be_spent_values = [
+            Scalar::from(6),
+            Scalar::from(6),
+            Scalar::from(6),
+            Scalar::from(6),
+            Scalar::from(6),
+        ];
 
-//         // test three vouchers
-//         let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-//         let serial_numbers = [
-//             params.random_scalar(),
-//             params.random_scalar(),
-//             params.random_scalar(),
-//         ];
-//         let signatures = [
-//             Signature(
-//                 params.gen1() * params.random_scalar(),
-//                 params.gen1() * params.random_scalar(),
-//             ),
-//             Signature(
-//                 params.gen1() * params.random_scalar(),
-//                 params.gen1() * params.random_scalar(),
-//             ),
-//             Signature(
-//                 params.gen1() * params.random_scalar(),
-//                 params.gen1() * params.random_scalar(),
-//             ),
-//         ];
+        let to_be_spent_serial_numbers =
+            params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
 
-//         let theta = randomise_and_prove_vouchers(
-//             &params,
-//             &verification_key,
-//             &binding_number,
-//             &values,
-//             &serial_numbers,
-//             &signatures,
-//         )
-//         .unwrap();
+        let to_be_spent_signatures = [
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+            Signature(
+                params.gen1() * params.random_scalar(),
+                params.gen1() * params.random_scalar(),
+            ),
+        ];
 
-//         let bytes = theta.to_bytes();
-//         assert_eq!(ThetaRequestPhase::try_from(bytes.as_slice()).unwrap(), theta);
-//     }
-// }
+        let theta = randomise_and_request_vouchers(
+            &params,
+            &verification_key,
+            &range_proof_verification_key,
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            &binding_number,
+            &to_be_issued_values,
+            &to_be_issued_serial_numbers,
+            &to_be_spent_values,
+            &to_be_spent_serial_numbers,
+            &to_be_spent_signatures,
+        )
+        .unwrap();
+
+        let theta_bytes = theta.to_bytes();
+        let theta_from_bytes = ThetaRequestPhase::try_from(theta_bytes.as_slice()).unwrap();
+
+        assert_eq!(theta_from_bytes, theta);
+    }
+}

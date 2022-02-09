@@ -314,7 +314,7 @@ mod tests {
             params.gen1() * params.random_scalar(),
         )];
 
-        let theta = randomise_and_prove_vouchers(
+        let theta = randomise_and_spend_vouchers(
             &params,
             &verification_key,
             &binding_number,
@@ -349,7 +349,7 @@ mod tests {
             ),
         ];
 
-        let theta = randomise_and_prove_vouchers(
+        let theta = randomise_and_spend_vouchers(
             &params,
             &verification_key,
             &binding_number,

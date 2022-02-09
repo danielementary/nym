@@ -12,10 +12,9 @@ use crate::error::{CoconutError, Result};
 use crate::proofs::ProofRequestPhase;
 use crate::scheme::check_bilinear_pairing;
 use crate::scheme::setup::Parameters;
-use crate::scheme::verification::{compute_kappa, compute_zeta};
 use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
-use crate::utils::{try_deserialize_g1_projective, try_deserialize_g2_projective};
+use crate::utils::{hash_g1, try_deserialize_g1_projective, try_deserialize_g2_projective};
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -187,7 +186,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             let mut range_proof_decomposition_commitments =
                 Vec::with_capacity(range_proof_number_of_elements_l as usize);
 
-            for j in 0..range_proof_number_of_elements_l {
+            for _ in 0..range_proof_number_of_elements_l {
                 p = p_prime;
                 p_prime += 96;
 
@@ -451,74 +450,191 @@ pub fn randomise_and_request_vouchers(
     to_be_spent_values: &[Scalar],
     to_be_spent_serial_numbers: &[Scalar],
     // vouchers
-    to_be_spent_vouchers: &[Signature],
+    to_be_spent_signatures: &[Signature],
 ) -> Result<ThetaRequestPhase> {
-    // randomize the vouchers to be spent
-    let (randomized_to_be_spent_vouchers, to_be_spent_blinders): (Vec<Signature>, Vec<Scalar>) =
-        to_be_spent_vouchers
+    // randomize the signatures to be spent
+    let (to_be_spent_signatures, to_be_spent_blinders): (Vec<Signature>, Vec<Scalar>) =
+        to_be_spent_signatures
             .iter()
             .map(|v| v.randomise(&params))
             .unzip();
 
-    let to_be_issued_values_decompositions = to_be_issued_values
+    let to_be_issued_values_decompositions: Vec<Vec<Scalar>> = to_be_issued_values
         .iter()
         .map(|value| decompose_value(range_proof_base_u, range_proof_number_of_elements_l, value))
         .collect();
 
-    // pub(crate) fn construct(
-    //     params: &Parameters,
-    //     verification_key: &VerificationKey,
-    //     range_proof_verification_key: &VerificationKey,
-    //     number_of_to_be_issued_vouchers: u8,
-    //     number_of_to_be_spent_vouchers: u8,
-    //     range_proof_base_u: u8,
-    //     range_proof_number_of_elements_l: u8,
-    //     // secrets
-    //     binding_number: &Scalar,
-    //     // to be issued
-    //     to_be_issued_values_decompositions: &[Vec<Scalar>],
-    //     to_be_issued_serial_numbers: &[Scalar],
-    //     to_be_issued_commitments_openings: &[Scalar],
-    //     to_be_issued_binding_numbers_openings: &[Scalar],
-    //     to_be_issued_values_openings: &[Scalar],
-    //     to_be_issued_serial_numbers_openings: &[Scalar],
-    //     // to be spent
-    //     to_be_spent_values: &[Scalar],
-    //     to_be_spent_serial_numbers: &[Scalar],
-    //     to_be_spent_blinders: &[Scalar],
-    //     // range proof
-    //     range_proof_blinders: &[Vec<Scalar>],
-    //     // for challenge
-    //     to_be_issued_commitments: &[G1Projective],
-    //     to_be_issued_binding_number_commitments: &[G1Projective],
-    //     to_be_issued_values_commitments: &[G1Projective],
-    //     to_be_issued_serial_numbers_commitments: &[G1Projective],
-    //     to_be_spent_attributes_commitments: &[G2Projective],
-    //     to_be_spent_serial_numbers_commitments: &[G2Projective],
-    //     blinded_pay: &G2Projective,
-    //     range_proof_decompositions_commitments: &[Vec<G2Projective>],
-    // ) -> Self {
-    // let pi_v = ProofSpend::construct(
-    //     &params,
-    //     &verification_key,
-    //     number_of_vouchers_spent,
-    //     &binding_number,
-    //     &values,
-    //     &serial_numbers,
-    //     &signatures_blinding_factors,
-    //     &blinded_messages,
-    //     &blinded_serial_numbers,
-    //     &blinded_spent_amount,
-    // );
+    let to_be_issued_commitments_openings =
+        params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+    let to_be_issued_binding_numbers_openings =
+        params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+    let to_be_issued_values_openings =
+        params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+    let to_be_issued_serial_numbers_openings =
+        params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+    let mut range_proof_blinders = vec![];
+    for _ in 0..number_of_to_be_spent_vouchers {
+        let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
+        range_proof_blinders.push(temp);
+    }
 
-    // Ok(ThetaRequestPhase {
-    //     number_of_vouchers_spent,
-    //     blinded_messages,
-    //     blinded_serial_numbers,
-    //     blinded_spent_amount,
-    //     vouchers_signatures: signatures_prime,
-    //     pi_v,
-    // })
+    let to_be_issued_commitments: Vec<G1Projective> = izip!(
+        to_be_issued_commitments_openings.iter(),
+        to_be_issued_values_decompositions.iter(),
+        to_be_issued_serial_numbers.iter()
+    )
+    .map(|(opening, value_decompositions, serial_number)| {
+        params.gen1() * opening
+            + params.hs1()[0] * binding_number
+            + value_decompositions
+                .iter()
+                .enumerate()
+                .map(|(index, value_decomposition)| {
+                    params.hs1()[1] * value_decomposition
+                        + params.hs1()[1]
+                            * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                })
+                .sum::<G1Projective>()
+            + params.hs1()[2] * serial_number
+    })
+    .collect();
+
+    let to_be_issued_hm_s: Vec<G1Projective> = to_be_issued_commitments
+        .iter()
+        .map(|commitment| hash_g1(commitment.to_affine().to_compressed()))
+        .collect();
+
+    let to_be_issued_binding_number_commitments: Vec<G1Projective> = izip!(
+        to_be_issued_serial_numbers_openings.iter(),
+        to_be_issued_hm_s.iter()
+    )
+    .map(|(opening, hm)| params.gen1() * opening + hm * binding_number)
+    .collect();
+
+    let to_be_issued_values_commitments: Vec<G1Projective> = izip!(
+        to_be_issued_values_openings.iter(),
+        to_be_issued_hm_s.iter(),
+        to_be_issued_values_decompositions.iter(),
+    )
+    .map(|(opening, hm, value_decompositions)| {
+        params.gen1() * opening
+            + value_decompositions
+                .iter()
+                .enumerate()
+                .map(|(index, value_decomposition)| {
+                    hm * value_decomposition
+                        + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                })
+                .sum::<G1Projective>()
+    })
+    .collect();
+
+    let to_be_issued_serial_numbers_commitments: Vec<G1Projective> = izip!(
+        to_be_issued_serial_numbers_openings.iter(),
+        to_be_issued_hm_s.iter(),
+        to_be_issued_serial_numbers.iter(),
+    )
+    .map(|(opening, hm, serial_number)| params.gen1() * opening + hm * serial_number)
+    .collect();
+
+    let to_be_spent_attributes_commitments: Vec<G2Projective> = izip!(
+        to_be_spent_values.iter(),
+        to_be_spent_serial_numbers.iter(),
+        to_be_spent_blinders.iter()
+    )
+    .map(|(value, serial_number, blinder)| {
+        verification_key.alpha()
+            + verification_key.beta_g2()[0] * binding_number
+            + verification_key.beta_g2()[1] * value
+            + verification_key.beta_g2()[2] * serial_number
+            + params.gen2() * blinder
+    })
+    .collect();
+
+    let to_be_spent_serial_numbers_commitments: Vec<G2Projective> = to_be_spent_serial_numbers
+        .iter()
+        .map(|serial_number| params.gen2() * serial_number)
+        .collect();
+
+    let blinded_pay: G2Projective = to_be_issued_values_decompositions
+        .iter()
+        .map(|value_decompositions| {
+            value_decompositions
+                .iter()
+                .enumerate()
+                .map(|(index, value_decomposition)| {
+                    params.hs2()[1] * value_decomposition
+                        + params.hs2()[1]
+                            * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                })
+                .sum::<G2Projective>()
+        })
+        .sum::<G2Projective>()
+        - to_be_spent_values
+            .iter()
+            .map(|value| params.hs2()[1] * value)
+            .sum::<G2Projective>();
+
+    let range_proof_decompositions_commitments: Vec<Vec<G2Projective>> = izip!(
+        to_be_issued_values_decompositions.iter(),
+        range_proof_blinders.iter()
+    )
+    .map(|(value_decompositions, blinders)| {
+        izip!(value_decompositions.iter(), blinders.iter())
+            .map(|(value_decomposition, blinder)| {
+                range_proof_verification_key.alpha()
+                    + range_proof_verification_key.beta_g2()[0] * value_decomposition
+                    + params.gen2() * blinder
+            })
+            .collect()
+    })
+    .collect();
+
+    let proof = ProofRequestPhase::construct(
+        &params,
+        &verification_key,
+        &range_proof_verification_key,
+        number_of_to_be_issued_vouchers,
+        number_of_to_be_spent_vouchers,
+        range_proof_base_u,
+        range_proof_number_of_elements_l,
+        &binding_number,
+        &to_be_issued_values_decompositions,
+        &to_be_issued_serial_numbers,
+        &to_be_issued_commitments_openings,
+        &to_be_issued_binding_numbers_openings,
+        &to_be_issued_values_openings,
+        &to_be_issued_serial_numbers_openings,
+        &to_be_spent_values,
+        &to_be_spent_serial_numbers,
+        &to_be_spent_blinders,
+        &range_proof_blinders,
+        &to_be_issued_commitments,
+        &to_be_issued_binding_number_commitments,
+        &to_be_issued_values_commitments,
+        &to_be_issued_serial_numbers_commitments,
+        &to_be_spent_attributes_commitments,
+        &to_be_spent_serial_numbers_commitments,
+        &blinded_pay,
+        &range_proof_decompositions_commitments,
+    );
+
+    Ok(ThetaRequestPhase {
+        number_of_to_be_issued_vouchers,
+        number_of_to_be_spent_vouchers,
+        range_proof_base_u,
+        range_proof_number_of_elements_l,
+        to_be_issued_commitments,
+        to_be_issued_binding_number_commitments,
+        to_be_issued_values_commitments,
+        to_be_issued_serial_numbers_commitments,
+        to_be_spent_attributes_commitments,
+        to_be_spent_serial_numbers_commitments,
+        blinded_pay,
+        range_proof_decompositions_commitments,
+        to_be_spent_signatures,
+        proof,
+    })
 }
 
 // pub fn verify_vouchers(

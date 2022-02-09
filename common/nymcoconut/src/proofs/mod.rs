@@ -896,7 +896,7 @@ impl ProofRequestPhase {
 
         // witnesses commitments
         let to_be_issued_witnesses_commitments: Vec<G1Projective> = izip!(
-            witnesses_to_be_issued_values_openings.iter(),
+            witnesses_to_be_issued_commitments_openings.iter(),
             witnesses_to_be_issued_values_decompositions.iter(),
             witnesses_to_be_issued_serial_numbers.iter()
         )
@@ -1856,7 +1856,7 @@ impl ProofRequestPhase {
 
         let mut responses_to_be_issued_values_decompositions =
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
-        for i in 0..number_of_to_be_issued_vouchers {
+        for _ in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
             p_prime += 32 * range_proof_number_of_elements_l as usize;
 
@@ -1966,7 +1966,7 @@ impl ProofRequestPhase {
 
         let mut responses_range_proof_blinders =
             Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
-        for i in 0..number_of_to_be_issued_vouchers {
+        for _ in 0..number_of_to_be_issued_vouchers {
             p = p_prime;
             p_prime += 32 * range_proof_number_of_elements_l as usize;
 

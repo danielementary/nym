@@ -1,9 +1,9 @@
 use bls12_381::{G2Projective, Scalar};
 use itertools::izip;
 use nymcoconut::{
-    aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_prove_vouchers,
-    verify_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters, Signature,
-    SignatureShare, ThetaSpend, VerificationKey,
+    aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_spend_vouchers,
+    verify_spent_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters, Signature,
+    SignatureShare, ThetaSpendPhase, VerificationKey,
 };
 
 type Attribute = Scalar;
@@ -94,7 +94,7 @@ struct SignedVouchersList {
 }
 
 struct ThetaSpendAndInfos {
-    theta: ThetaSpend,
+    theta: ThetaSpendPhase,
     infos: Attributes,
 }
 
@@ -160,6 +160,8 @@ impl SignedVouchersList {
         validator_verification_key: &VerificationKey,
         values: &[Attribute],
     ) -> ThetaSpendAndInfos {
+        assert!(self.to_be_spent_vouchers.len() == 0);
+
         // find vouchers to be spent
         let to_be_spent_vouchers_indices = self.find(&values);
 
@@ -185,7 +187,7 @@ impl SignedVouchersList {
             .map(|signed_voucher| signed_voucher.signature)
             .collect();
 
-        let theta = randomise_and_prove_vouchers(
+        let theta = randomise_and_spend_vouchers(
             coconut_params,
             validator_verification_key,
             &binding_number,
@@ -282,7 +284,7 @@ impl ThetaSpendAndInfos {
         }
 
         // check vouchers
-        if !verify_vouchers(
+        if !verify_spent_vouchers(
             coconut_params,
             validators_verification_key,
             &self.theta,
@@ -629,6 +631,21 @@ mod tests {
         let validators_verification_key =
             aggregate_verification_keys(&validators_verification_keys, Some(&[1, 2, 3])).unwrap();
 
+        // generate range proof signatures
+        let range_proof_keypair = keygen(&params);
+        let range_proof_verification_key = range_proof_keypair.verification_key();
+        let range_proof_secret_key = range_proof_keypair.secret_key();
+
+        let range_proof_base_u: u8 = 4;
+        let range_proof_number_of_elements_l: u8 = 8;
+
+        let range_proof_h = params.gen1() * params.random_scalar();
+        let range_proof_signatures = issue_range_signatures(
+            &range_proof_h,
+            &range_proof_secret_key,
+            range_proof_base_u as usize,
+        );
+
         // create initial vouchers
         let binding_number = params.coconut_params.random_scalar();
         let values = [Scalar::from(10); 5]; // 5 vouchers of value 10
@@ -683,6 +700,14 @@ mod tests {
         let to_be_issued_values = [Scalar::from(3), Scalar::from(2)];
 
         // TODO complete e2e test for request
+        assert(signed_vouchers_list.to_be_spent_vouchers.len() == 0);
+
+        let to_be_spent_vouchers_indices = signed_vouchers_list.find(&to_be_spent_values);
+
+        signed_vouchers_list
+            .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
+        assert!(self.to_be_spent_vouchers.len() > 0);
     }
 
     #[test]

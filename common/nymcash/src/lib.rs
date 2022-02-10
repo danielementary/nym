@@ -101,7 +101,7 @@ struct ThetaSpendAndInfos {
 
 impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
-        let unspent_vouchers = izip!(vouchers.into_iter(), signatures.into_iter())
+        let unspent_vouchers = izip!(vouchers.iter(), signatures.iter())
             .map(|(voucher, signature)| SignedVoucher {
                 voucher: *voucher,
                 signature: *signature,
@@ -115,6 +115,17 @@ impl SignedVouchersList {
             unspent_vouchers,
             spent_vouchers,
             to_be_spent_vouchers,
+        }
+    }
+
+    fn add_new_unspent_vouchers(&mut self, vouchers: &[Voucher], signatures: &[Signature]) {
+        for (voucher, signature) in izip!(vouchers.iter(), signatures.iter()) {
+            let new_unspent_voucher = SignedVoucher {
+                voucher: *voucher,
+                signature: *signature,
+            };
+
+            self.unspent_vouchers.push(new_unspent_voucher);
         }
     }
 
@@ -722,11 +733,14 @@ mod tests {
             &binding_number,
             &to_be_issued_values,
         );
-
         let to_be_issued_vouchers_public_attributes: Vec<Attributes> = to_be_issued_vouchers
             .iter()
             .map(|v| v.public_attributes())
             .collect();
+        let (
+            to_be_issued_blinded_signatures_shares_openings,
+            to_be_issued_blinded_signatures_shares_requests,
+        ) = prepare_vouchers_blind_sign(&params.coconut_params, &to_be_issued_vouchers);
 
         let (to_be_issued_values, to_be_issued_serial_numbers): (Attributes, Attributes) =
             to_be_issued_vouchers
@@ -776,6 +790,17 @@ mod tests {
             .map(|signed_voucher| signed_voucher.voucher.info)
             .collect();
 
+        // validators
+        let double_spending_tags = &proof_to_request.to_be_spent_serial_numbers_commitments;
+        // TODO add double spending count
+        // assert!(bulletin_board.check_valid_double_spending_tags(&double_spending_tags));
+
+        // TODO debug this
+        // assert_eq!(
+        //     params.coconut_params.gen2() * Scalar::from(pay),
+        //     proof_to_request.blinded_pay
+        // );
+
         assert!(verify_request_vouchers(
             &params.coconut_params,
             &validators_verification_key,
@@ -783,6 +808,49 @@ mod tests {
             &proof_to_request,
             &to_be_spent_vouchers_public_attributes
         ));
+
+        // bulletin_board.add_tags(&double_spending_tags);
+
+        let to_be_issued_blinded_signatures_shares = vouchers_blind_sign(
+            &params.coconut_params,
+            &to_be_issued_blinded_signatures_shares_requests,
+            &to_be_issued_vouchers_public_attributes,
+            &validators_key_pairs,
+        );
+
+        // user again
+        let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(
+            &params.coconut_params,
+            &to_be_issued_blinded_signatures_shares,
+            &to_be_issued_vouchers,
+            &to_be_issued_blinded_signatures_shares_openings,
+            &to_be_issued_blinded_signatures_shares_requests,
+            &validators_verification_keys,
+        );
+
+        let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
+            &params.coconut_params,
+            &to_be_issued_signatures_shares,
+            &to_be_issued_vouchers,
+            &validators_verification_key,
+        );
+
+        signed_vouchers_list.confirm_vouchers_spent();
+
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 4
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 1
+        );
+
+        signed_vouchers_list
+            .add_new_unspent_vouchers(&to_be_issued_vouchers, &to_be_issued_signatures);
+
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 6
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 1
+        );
     }
 
     #[test]

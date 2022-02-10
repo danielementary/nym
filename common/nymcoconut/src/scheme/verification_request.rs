@@ -314,7 +314,7 @@ fn issue_signature(h: &G1Projective, secret_key: &SecretKey, value: &Scalar) -> 
     Signature(*h, h * secret_key.x + h * secret_key.ys[0] * value)
 }
 
-fn issue_range_signatures(
+pub fn issue_range_signatures(
     h: &G1Projective,
     secret_key: &SecretKey,
     base: usize,

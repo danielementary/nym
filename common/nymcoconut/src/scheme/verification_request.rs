@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use itertools::izip;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
@@ -12,7 +13,7 @@ use crate::error::{CoconutError, Result};
 use crate::proofs::ProofRequestPhase;
 use crate::scheme::check_bilinear_pairing;
 use crate::scheme::setup::Parameters;
-use crate::scheme::{Signature, VerificationKey};
+use crate::scheme::{SecretKey, Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
 use crate::utils::{hash_g1, try_deserialize_g1_projective, try_deserialize_g2_projective};
 
@@ -35,6 +36,7 @@ pub struct ThetaRequestPhase {
     range_proof_decompositions_commitments: Vec<Vec<G2Projective>>,
     // signatures
     to_be_spent_signatures: Vec<Signature>,
+    range_proof_decompositions_signatures: Vec<Vec<Signature>>,
     // zero-knowledge proof
     proof: ProofRequestPhase,
 }
@@ -213,8 +215,24 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             p_prime += 96;
 
             let to_be_spent_signature = Signature::try_from(&bytes[p..p_prime])?;
-
             to_be_spent_signatures.push(to_be_spent_signature);
+        }
+
+        let mut range_proof_decompositions_signatures =
+            Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
+        for _ in 0..number_of_to_be_issued_vouchers {
+            let mut range_proof_decomposition_signatures =
+                Vec::with_capacity(range_proof_number_of_elements_l as usize);
+
+            for _ in 0..range_proof_number_of_elements_l {
+                p = p_prime;
+                p_prime += 96;
+
+                let range_proof_decomposition_signature = Signature::try_from(&bytes[p..p_prime])?;
+                range_proof_decomposition_signatures.push(range_proof_decomposition_signature);
+            }
+
+            range_proof_decompositions_signatures.push(range_proof_decomposition_signatures);
         }
 
         p = p_prime;
@@ -234,6 +252,7 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             blinded_pay,
             range_proof_decompositions_commitments,
             to_be_spent_signatures,
+            range_proof_decompositions_signatures,
             proof,
         })
     }
@@ -287,6 +306,51 @@ fn decompose_value(base: u8, number_of_base_elements: u8, value: &Scalar) -> Vec
     // decomposition is little endian: base^0 | base^1 | ... | base^(number_of_base_elements - 1)
     decomposition.reverse();
     decomposition
+}
+
+type RangeProofSignatures = HashMap<u64, Signature>;
+
+fn issue_signature(h: &G1Projective, secret_key: &SecretKey, value: &Scalar) -> Signature {
+    Signature(*h, h * secret_key.x + h * secret_key.ys[0] * value)
+}
+
+fn issue_range_signatures(
+    h: &G1Projective,
+    secret_key: &SecretKey,
+    base: usize,
+) -> RangeProofSignatures {
+    let mut range_signatures = vec![];
+
+    for i in 0..base {
+        let signature = issue_signature(&h, &secret_key, &Scalar::from(i as u64));
+        range_signatures.push(signature);
+    }
+
+    (0..base)
+        .collect::<Vec<_>>()
+        .iter()
+        .map(|value| {
+            let value = *value as u64;
+            (
+                value,
+                issue_signature(&h, &secret_key, &Scalar::from(value)),
+            )
+        })
+        .collect::<RangeProofSignatures>()
+}
+
+fn pick_signature_for_element(signatures: &RangeProofSignatures, value: &Scalar) -> Signature {
+    signatures.get(&scalar_to_u64(value)).unwrap().clone()
+}
+
+fn pick_signatures_for_decomposition(
+    signatures: &RangeProofSignatures,
+    decomposition: &[Scalar],
+) -> Vec<Signature> {
+    decomposition
+        .iter()
+        .map(|value| pick_signature_for_element(&signatures, &value))
+        .collect()
 }
 
 impl ThetaRequestPhase {
@@ -379,6 +443,14 @@ impl ThetaRequestPhase {
             .flatten()
             .collect::<Vec<u8>>();
 
+        let range_proof_decompositions_signatures_bytes = self
+            .range_proof_decompositions_signatures
+            .iter()
+            .flatten()
+            .map(|s| s.to_bytes())
+            .flatten()
+            .collect::<Vec<u8>>();
+
         let proof_bytes = self.proof.to_bytes();
 
         let mut bytes = Vec::with_capacity(
@@ -395,6 +467,7 @@ impl ThetaRequestPhase {
                 + blinded_pay_bytes.len()
                 + range_proof_decompositions_commitments_bytes.len()
                 + to_be_spent_signatures_bytes.len()
+                + range_proof_decompositions_signatures_bytes.len()
                 + proof_bytes.len(),
         );
 
@@ -411,6 +484,7 @@ impl ThetaRequestPhase {
         bytes.extend(blinded_pay_bytes);
         bytes.extend(range_proof_decompositions_commitments_bytes);
         bytes.extend(to_be_spent_signatures_bytes);
+        bytes.extend(range_proof_decompositions_signatures_bytes);
         bytes.extend(proof_bytes);
 
         bytes
@@ -437,6 +511,7 @@ pub fn randomise_and_request_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
     range_proof_verification_key: &VerificationKey,
+    range_proof_signatures: &RangeProofSignatures,
     number_of_to_be_issued_vouchers: u8,
     number_of_to_be_spent_vouchers: u8,
     range_proof_base_u: u8,
@@ -452,17 +527,41 @@ pub fn randomise_and_request_vouchers(
     // vouchers
     to_be_spent_signatures: &[Signature],
 ) -> Result<ThetaRequestPhase> {
-    // randomize the signatures to be spent
+    let to_be_issued_values_decompositions: Vec<Vec<Scalar>> = to_be_issued_values
+        .iter()
+        .map(|value| decompose_value(range_proof_base_u, range_proof_number_of_elements_l, value))
+        .collect();
+
+    let range_proof_decompositions_signatures: Vec<Vec<Signature>> =
+        to_be_issued_values_decompositions
+            .iter()
+            .map(|range_proof_values_decomposition| {
+                pick_signatures_for_decomposition(
+                    &range_proof_signatures,
+                    &range_proof_values_decomposition,
+                )
+            })
+            .collect();
+
     let (to_be_spent_signatures, to_be_spent_blinders): (Vec<Signature>, Vec<Scalar>) =
         to_be_spent_signatures
             .iter()
             .map(|v| v.randomise(&params))
             .unzip();
-
-    let to_be_issued_values_decompositions: Vec<Vec<Scalar>> = to_be_issued_values
+    let (range_proof_decompositions_signatures, range_proof_blinders): (
+        Vec<Vec<Signature>>,
+        Vec<Vec<Scalar>>,
+    ) = range_proof_decompositions_signatures
         .iter()
-        .map(|value| decompose_value(range_proof_base_u, range_proof_number_of_elements_l, value))
-        .collect();
+        .map(|range_proof_decomposition_signatures| {
+            range_proof_decomposition_signatures
+                .iter()
+                .map(|range_proof_decomposition_signature| {
+                    range_proof_decomposition_signature.randomise(&params)
+                })
+                .unzip()
+        })
+        .unzip();
 
     let to_be_issued_commitments_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
@@ -472,11 +571,6 @@ pub fn randomise_and_request_vouchers(
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
     let to_be_issued_serial_numbers_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
-    let mut range_proof_blinders = vec![];
-    for _ in 0..number_of_to_be_spent_vouchers {
-        let temp = params.n_random_scalars(range_proof_number_of_elements_l as usize);
-        range_proof_blinders.push(temp);
-    }
 
     let to_be_issued_commitments: Vec<G1Projective> = izip!(
         to_be_issued_commitments_openings.iter(),
@@ -633,48 +727,76 @@ pub fn randomise_and_request_vouchers(
         blinded_pay,
         range_proof_decompositions_commitments,
         to_be_spent_signatures,
+        range_proof_decompositions_signatures,
         proof,
     })
 }
 
-// pub fn verify_vouchers(
-//     params: &Parameters,
-//     verification_key: &VerificationKey,
-//     theta: &ThetaRequestPhase,
-//     infos: &[Scalar],
-// ) -> bool {
-//     if verification_key.beta_g2.len() < 4 {
-//         return false;
-//     }
+pub fn verify_request_vouchers(
+    params: &Parameters,
+    verification_key: &VerificationKey,
+    range_proof_verification_key: &VerificationKey,
+    theta: &ThetaRequestPhase,
+    infos: &[Scalar],
+) -> bool {
+    if verification_key.beta_g2.len() < 4 {
+        return false;
+    }
 
-//     if !theta.verify_proof(params, verification_key) {
-//         return false;
-//     }
+    if !theta.verify_proof(params, verification_key, range_proof_verification_key) {
+        return false;
+    }
 
-//     let blinded_messages: Vec<_> = theta
-//         .blinded_messages
-//         .iter()
-//         .zip(infos.iter())
-//         .map(|(bm, i)| bm + verification_key.beta_g2()[3] * i)
-//         .collect();
+    let to_be_spent_attributes_commitments: Vec<G2Projective> = theta
+        .to_be_spent_attributes_commitments
+        .iter()
+        .zip(infos.iter())
+        .map(|(to_be_spent_attributes_commitment, info)| {
+            to_be_spent_attributes_commitment + verification_key.beta_g2()[3] * info
+        })
+        .collect();
 
-//     for (vs, bm) in izip!(theta.vouchers_signatures.iter(), blinded_messages.iter()) {
-//         if !check_bilinear_pairing(
-//             &vs.0.to_affine(),
-//             &G2Prepared::from(bm.to_affine()),
-//             &vs.1.to_affine(),
-//             params.prepared_miller_g2(),
-//         ) {
-//             return false;
-//         }
+    for (to_be_spent_signature, to_be_spent_attributes_commitment) in izip!(
+        theta.to_be_spent_signatures.iter(),
+        to_be_spent_attributes_commitments.iter()
+    ) {
+        if !check_bilinear_pairing(
+            &to_be_spent_signature.0.to_affine(),
+            &G2Prepared::from(to_be_spent_attributes_commitment.to_affine()),
+            &to_be_spent_signature.1.to_affine(),
+            params.prepared_miller_g2(),
+        ) {
+            return false;
+        }
 
-//         if bool::from(vs.0.is_identity()) {
-//             return false;
-//         }
-//     }
+        if bool::from(to_be_spent_signature.0.is_identity()) {
+            return false;
+        }
+    }
 
-//     true
-// }
+    for (range_proof_decomposition_signature, range_proof_decomposition_commitment) in izip!(
+        theta.range_proof_decompositions_signatures.iter().flatten(),
+        theta
+            .range_proof_decompositions_commitments
+            .iter()
+            .flatten()
+    ) {
+        if !check_bilinear_pairing(
+            &range_proof_decomposition_signature.0.to_affine(),
+            &G2Prepared::from(range_proof_decomposition_commitment.to_affine()),
+            &range_proof_decomposition_signature.1.to_affine(),
+            params.prepared_miller_g2(),
+        ) {
+            return false;
+        }
+
+        if bool::from(range_proof_decomposition_signature.0.is_identity()) {
+            return false;
+        }
+    }
+
+    true
+}
 
 #[cfg(test)]
 mod tests {

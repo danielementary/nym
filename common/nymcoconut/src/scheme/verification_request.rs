@@ -807,36 +807,25 @@ mod tests {
 
     #[test]
     fn theta_request_phase_bytes_roundtrip() {
-        // pub fn randomise_and_request_vouchers(
-        //     params: &Parameters,
-        //     verification_key: &VerificationKey,
-        //     range_proof_verification_key: &VerificationKey,
-        //     number_of_to_be_issued_vouchers: u8,
-        //     number_of_to_be_spent_vouchers: u8,
-        //     range_proof_base_u: u8,
-        //     range_proof_number_of_elements_l: u8,
-        //     // secrets
-        //     binding_number: &Scalar,
-        //     // to be issued
-        //     to_be_issued_values: &[Scalar],
-        //     to_be_issued_serial_numbers: &[Scalar],
-        //     // to be spent
-        //     to_be_spent_values: &[Scalar],
-        //     to_be_spent_serial_numbers: &[Scalar],
-        //     // vouchers
-        //     to_be_spent_signatures: &[Signature],
-        // ) -> Result<ThetaRequestPhase> {
         let params = setup(4).unwrap();
 
         let keypair = keygen(&params);
         let verification_key = keypair.verification_key();
         let range_proof_keypair = keygen(&params);
-        let range_proof_verification_key = keypair.verification_key();
+        let range_proof_verification_key = range_proof_keypair.verification_key();
+        let range_proof_secret_key = range_proof_keypair.secret_key();
 
         let number_of_to_be_issued_vouchers: u8 = 3;
         let number_of_to_be_spent_vouchers: u8 = 5;
         let range_proof_base_u: u8 = 8;
         let range_proof_number_of_elements_l: u8 = 4;
+
+        let range_proof_h = params.gen1() * params.random_scalar();
+        let range_proof_signatures = issue_range_signatures(
+            &range_proof_h,
+            &range_proof_secret_key,
+            range_proof_base_u as usize,
+        );
 
         let binding_number = params.random_scalar();
 
@@ -882,6 +871,7 @@ mod tests {
             &params,
             &verification_key,
             &range_proof_verification_key,
+            &range_proof_signatures,
             number_of_to_be_issued_vouchers,
             number_of_to_be_spent_vouchers,
             range_proof_base_u,

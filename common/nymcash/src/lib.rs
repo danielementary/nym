@@ -218,50 +218,6 @@ impl SignedVouchersList {
         ThetaSpendAndInfos { theta, infos }
     }
 
-    // // TODO: return openings and blindsignrequests
-    // fn prepare_request_vouchers_blind_sign(
-    //     &mut self,
-    //     coconut_params: &Parameters,
-    //     validator_verification_key: &VerificationKey,
-    //     pay: &Scalar,
-    //     to_be_spent_values: &[Attribute],
-    //     to_be_issued_values: &[Attribute],
-    // ) {
-    //     // find vouchers to be spent
-    //     let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
-
-    //     // move vouchers from unspent to to be spent
-    //     self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
-
-    //     assert!(self.to_be_spent_vouchers.len() > 0);
-
-    //     let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
-    //     let (values, serial_numbers): (Attributes, Attributes) = self
-    //         .to_be_spent_vouchers
-    //         .iter()
-    //         .map(|signed_voucher| {
-    //             (
-    //                 signed_voucher.voucher.value,
-    //                 signed_voucher.voucher.serial_number,
-    //             )
-    //         })
-    //         .unzip();
-    //     let signatures: Vec<Signature> = self
-    //         .to_be_spent_vouchers
-    //         .iter()
-    //         .map(|signed_voucher| signed_voucher.signature)
-    //         .collect();
-
-    //     let to_be_issued_vouchers =
-    //         Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
-    //     let to_be_issued_vouchers_public_attributes: Vec<Attributes> = to_be_issued_vouchers
-    //         .iter()
-    //         .map(|v| v.public_attributes())
-    //         .collect();
-    //     // let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
-    //     //     prepare_vouchers_blind_sign(&coconut_params, &to_be_issued_vouchers);
-    // }
-
     fn confirm_vouchers_spent(&mut self) {
         for voucher in self.to_be_spent_vouchers.iter() {
             self.spent_vouchers.push(*voucher);

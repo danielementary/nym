@@ -3,8 +3,9 @@ use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, blind_sign, issue_range_signatures, keygen, prepare_blind_sign,
     randomise_and_request_vouchers, randomise_and_spend_vouchers, verify_request_vouchers,
-    verify_spent_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters, Signature,
-    SignatureShare, ThetaSpendPhase, VerificationKey,
+    verify_spent_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters,
+    RangeProofSignatures, Signature, SignatureShare, ThetaRequestPhase, ThetaSpendPhase,
+    VerificationKey,
 };
 
 type Attribute = Scalar;
@@ -99,6 +100,13 @@ struct ThetaSpendAndInfos {
     infos: Attributes,
 }
 
+struct ThetaRequestAndInfos {
+    theta: ThetaRequestPhase,
+    to_be_issued_blinded_signatures_shares_requests: Vec<BlindSignRequest>,
+    to_be_issued_infos: Attributes,
+    to_be_spent_infos: Attributes,
+}
+
 impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
         let unspent_vouchers = izip!(vouchers.iter(), signatures.iter())
@@ -164,6 +172,89 @@ impl SignedVouchersList {
 
         self.unspent_vouchers = unspent_vouchers;
         self.to_be_spent_vouchers = to_be_spent_vouchers;
+    }
+
+    fn randomise_and_prove_to_request_vouchers(
+        &mut self,
+        coconut_params: &Parameters,
+        validators_verification_key: &VerificationKey,
+        range_proof_verification_key: &VerificationKey,
+        range_proof_base_u: u8,
+        range_proof_number_of_elements_l: u8,
+        range_proof_signatures: &RangeProofSignatures,
+        pay: &Scalar,
+        to_be_issued_values: &[Scalar],
+        to_be_spent_values: &[Scalar],
+    ) -> ThetaRequestAndInfos {
+        assert!(self.to_be_spent_vouchers.len() == 0);
+
+        let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
+        self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+
+        assert!(self.to_be_spent_vouchers.len() == to_be_spent_values.len());
+
+        let number_of_to_be_issued_vouchers = to_be_issued_values.len() as u8;
+        let number_of_to_be_spent_vouchers = to_be_spent_values.len() as u8;
+
+        let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
+
+        // to be issued
+        let to_be_issued_vouchers =
+            Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
+        let (
+            to_be_issued_blinded_signatures_shares_openings,
+            to_be_issued_blinded_signatures_shares_requests,
+        ) = prepare_vouchers_blind_sign(&coconut_params, &to_be_issued_vouchers);
+        let to_be_issued_serial_numbers: Attributes = to_be_issued_vouchers
+            .iter()
+            .map(|voucher| voucher.serial_number)
+            .collect();
+        let to_be_issued_infos: Attributes = to_be_issued_vouchers
+            .iter()
+            .map(|voucher| voucher.info)
+            .collect();
+
+        // to be spent
+        let to_be_spent_serial_numbers: Attributes = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.voucher.serial_number)
+            .collect();
+        let to_be_spent_signatures: Vec<Signature> = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.signature)
+            .collect();
+        let to_be_spent_infos: Attributes = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|signed_voucher| signed_voucher.voucher.info)
+            .collect();
+
+        let theta = randomise_and_request_vouchers(
+            &coconut_params,
+            &validators_verification_key,
+            &range_proof_verification_key,
+            &range_proof_signatures,
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            &binding_number,
+            &to_be_issued_values,
+            &to_be_issued_serial_numbers,
+            &to_be_spent_values,
+            &to_be_spent_serial_numbers,
+            &to_be_spent_signatures,
+        )
+        .unwrap();
+
+        ThetaRequestAndInfos {
+            theta,
+            to_be_issued_blinded_signatures_shares_requests,
+            to_be_issued_infos,
+            to_be_spent_infos,
+        }
     }
 
     fn randomise_and_prove_to_be_spent_vouchers(
@@ -267,6 +358,11 @@ impl ThetaSpendAndInfos {
         true
     }
 }
+
+// impl ThetaRequestAndInfos {
+
+//     fn verify(&self, coconut_params: &Parameters, validators_verification_key: &VerificationKey, range_proof_verification_key: &VerificationKey,
+// }
 
 struct BulletinBoard {
     double_spending_tags: Vec<G2Projective>,
@@ -668,87 +764,77 @@ mod tests {
         let to_be_spent_values = [Scalar::from(10)];
 
         // TODO complete e2e test for request
-        assert!(signed_vouchers_list.to_be_spent_vouchers.len() == 0);
+        // assert!(signed_vouchers_list.to_be_spent_vouchers.len() == 0);
 
-        let to_be_spent_vouchers_indices = signed_vouchers_list.find(&to_be_spent_values);
+        // let to_be_spent_vouchers_indices = signed_vouchers_list.find(&to_be_spent_values);
 
-        signed_vouchers_list
-            .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+        // signed_vouchers_list
+        //     .move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
 
-        assert!(signed_vouchers_list.to_be_spent_vouchers.len() > 0);
+        // assert!(signed_vouchers_list.to_be_spent_vouchers.len() > 0);
 
-        let number_of_to_be_issued_vouchers = to_be_issued_values.len() as u8;
-        let number_of_to_be_spent_vouchers = to_be_spent_values.len() as u8;
+        // let number_of_to_be_issued_vouchers = to_be_issued_values.len() as u8;
+        // let number_of_to_be_spent_vouchers = to_be_spent_values.len() as u8;
 
-        let binding_number = signed_vouchers_list.to_be_spent_vouchers[0]
-            .voucher
-            .binding_number;
+        // let binding_number = signed_vouchers_list.to_be_spent_vouchers[0]
+        //     .voucher
+        //     .binding_number;
 
-        let to_be_issued_vouchers = Voucher::new_many(
-            &params.coconut_params,
-            &binding_number,
-            &to_be_issued_values,
-        );
-        let to_be_issued_vouchers_public_attributes: Vec<Attributes> = to_be_issued_vouchers
-            .iter()
-            .map(|v| v.public_attributes())
-            .collect();
-        let (
-            to_be_issued_blinded_signatures_shares_openings,
-            to_be_issued_blinded_signatures_shares_requests,
-        ) = prepare_vouchers_blind_sign(&params.coconut_params, &to_be_issued_vouchers);
+        // let to_be_issued_vouchers = Voucher::new_many(
+        //     &params.coconut_params,
+        //     &binding_number,
+        //     &to_be_issued_values,
+        // );
+        // let (
+        //     to_be_issued_blinded_signatures_shares_openings,
+        //     to_be_issued_blinded_signatures_shares_requests,
+        // ) = prepare_vouchers_blind_sign(&params.coconut_params, &to_be_issued_vouchers);
 
-        let (to_be_issued_values, to_be_issued_serial_numbers): (Attributes, Attributes) =
-            to_be_issued_vouchers
-                .iter()
-                .map(|voucher| (voucher.value, voucher.serial_number))
-                .unzip();
+        // let (to_be_issued_values, to_be_issued_serial_numbers): (Attributes, Attributes) =
+        //     to_be_issued_vouchers
+        //         .iter()
+        //         .map(|voucher| (voucher.value, voucher.serial_number))
+        //         .unzip();
 
-        let (to_be_spent_values, to_be_spent_serial_numbers): (Attributes, Attributes) =
-            signed_vouchers_list
-                .to_be_spent_vouchers
-                .iter()
-                .map(|signed_voucher| {
-                    (
-                        signed_voucher.voucher.value,
-                        signed_voucher.voucher.serial_number,
-                    )
-                })
-                .unzip();
+        // let (to_be_spent_values, to_be_spent_serial_numbers): (Attributes, Attributes) =
+        //     signed_vouchers_list
+        //         .to_be_spent_vouchers
+        //         .iter()
+        //         .map(|signed_voucher| {
+        //             (
+        //                 signed_voucher.voucher.value,
+        //                 signed_voucher.voucher.serial_number,
+        //             )
+        //         })
+        //         .unzip();
 
-        let to_be_spent_signatures: Vec<Signature> = signed_vouchers_list
-            .to_be_spent_vouchers
-            .iter()
-            .map(|signed_voucher| signed_voucher.signature)
-            .collect();
+        // let to_be_spent_signatures: Vec<Signature> = signed_vouchers_list
+        //     .to_be_spent_vouchers
+        //     .iter()
+        //     .map(|signed_voucher| signed_voucher.signature)
+        //     .collect();
 
-        let proof_to_request = randomise_and_request_vouchers(
-            &params.coconut_params,
-            &validators_verification_key,
-            &range_proof_verification_key,
-            &range_proof_signatures,
-            number_of_to_be_issued_vouchers,
-            number_of_to_be_spent_vouchers,
-            range_proof_base_u,
-            range_proof_number_of_elements_l,
-            &binding_number,
-            &to_be_issued_values,
-            &to_be_issued_serial_numbers,
-            &to_be_spent_values,
-            &to_be_spent_serial_numbers,
-            &to_be_spent_signatures,
-        )
-        .unwrap();
-
-        let to_be_spent_vouchers_public_attributes: Attributes = signed_vouchers_list
-            .to_be_spent_vouchers
-            .iter()
-            .map(|signed_voucher| signed_voucher.voucher.info)
-            .collect();
+        // let proof_to_request = randomise_and_request_vouchers(
+        //     &params.coconut_params,
+        //     &validators_verification_key,
+        //     &range_proof_verification_key,
+        //     &range_proof_signatures,
+        //     number_of_to_be_issued_vouchers,
+        //     number_of_to_be_spent_vouchers,
+        //     range_proof_base_u,
+        //     range_proof_number_of_elements_l,
+        //     &binding_number,
+        //     &to_be_issued_values,
+        //     &to_be_issued_serial_numbers,
+        //     &to_be_spent_values,
+        //     &to_be_spent_serial_numbers,
+        //     &to_be_spent_signatures,
+        // )
+        // .unwrap();
 
         // validators
-        let double_spending_tags = &proof_to_request.to_be_spent_serial_numbers_commitments;
         // TODO add double spending count
+        // let double_spending_tags = &proof_to_request.to_be_spent_serial_numbers_commitments;
         // assert!(bulletin_board.check_valid_double_spending_tags(&double_spending_tags));
 
         // TODO debug this

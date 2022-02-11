@@ -308,7 +308,7 @@ fn decompose_value(base: u8, number_of_base_elements: u8, value: &Scalar) -> Vec
     decomposition
 }
 
-type RangeProofSignatures = HashMap<u64, Signature>;
+pub type RangeProofSignatures = HashMap<u64, Signature>;
 
 fn issue_signature(h: &G1Projective, secret_key: &SecretKey, value: &Scalar) -> Signature {
     Signature(*h, h * secret_key.x + h * secret_key.ys[0] * value)

@@ -26,6 +26,7 @@ pub use scheme::verification::Theta;
 pub use scheme::verification_request::issue_range_signatures;
 pub use scheme::verification_request::randomise_and_request_vouchers;
 pub use scheme::verification_request::verify_request_vouchers;
+pub use scheme::verification_request::RangeProofSignatures;
 pub use scheme::verification_request::ThetaRequestPhase;
 pub use scheme::verification_spend::randomise_and_spend_vouchers;
 pub use scheme::verification_spend::verify_spent_vouchers;

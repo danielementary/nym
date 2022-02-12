@@ -13,7 +13,8 @@ type Attributes = Vec<Attribute>;
 
 type Openings = Vec<Scalar>;
 
-type BlindedSignatureShares = Vec<BlindedSignature>;
+type BlindedSignatureShares = Vec<BlindedSignatureShare>;
+type BlindedSignatureShare = BlindedSignature;
 type SignatureShares = Vec<SignatureShare>;
 
 pub struct ECashParams {
@@ -361,7 +362,8 @@ impl ThetaSpendAndInfos {
 
 // impl ThetaRequestAndInfos {
 
-//     fn verify(&self, coconut_params: &Parameters, validators_verification_key: &VerificationKey, range_proof_verification_key: &VerificationKey,
+//     fn verify(&self, coconut_params: &Parameters, validators_key_pairs: &KeyPair, range_proof_verification_key: &VerificationKey) -> Vec<BlindedSignatureShares> {
+//     }
 // }
 
 struct BulletinBoard {
@@ -423,25 +425,20 @@ fn vouchers_blind_sign(
     params: &Parameters,
     blinded_signatures_shares_requests: &[BlindSignRequest],
     vouchers_public_attributes: &[Attributes],
-    validators_key_pairs: &[KeyPair],
-) -> Vec<BlindedSignatureShares> {
+    validator_key_pair: &KeyPair,
+) -> Vec<BlindedSignatureShare> {
     izip!(
         blinded_signatures_shares_requests.iter(),
         vouchers_public_attributes.iter()
     )
     .map(|(request, public_attributes)| {
-        validators_key_pairs
-            .iter() // each validator issue blinded signatures for every signature share
-            .map(|key_pair| {
-                blind_sign(
-                    &params,
-                    &key_pair.secret_key(),
-                    &request,
-                    &public_attributes,
-                )
-                .unwrap()
-            })
-            .collect::<BlindedSignatureShares>()
+        blind_sign(
+            &params,
+            &validator_key_pair.secret_key(),
+            &request,
+            &public_attributes,
+        )
+        .unwrap()
     })
     .collect()
 }
@@ -542,12 +539,30 @@ mod tests {
             prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
 
         // issue signatures for initial vouchers partial signatures
-        let blinded_signatures_shares = vouchers_blind_sign(
-            &params.coconut_params,
-            &blinded_signatures_shares_requests,
-            &vouchers_public_attributes,
-            &validators_key_pairs,
-        );
+        let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =
+            validators_key_pairs
+                .iter()
+                .map(|validator_key_pair| {
+                    vouchers_blind_sign(
+                        &params.coconut_params,
+                        &blinded_signatures_shares_requests,
+                        &vouchers_public_attributes,
+                        &validator_key_pair,
+                    )
+                })
+                .collect();
+
+        let blinded_signatures_shares = (0..blinded_signatures_shares_per_validator[0].len())
+            .map(|blinded_signatures_shares_index| {
+                blinded_signatures_shares_per_validator
+                    .iter()
+                    .map(|blinded_signatures_shares_of_one_validator| {
+                        blinded_signatures_shares_of_one_validator[blinded_signatures_shares_index]
+                            .clone()
+                    })
+                    .collect::<BlindedSignatureShares>()
+            })
+            .collect::<Vec<BlindedSignatureShares>>();
 
         // unblind partial signatures
         let signatures_shares = unblind_vouchers_signatures_shares(
@@ -723,12 +738,30 @@ mod tests {
             prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
 
         // issue signatures for initial vouchers partial signatures
-        let blinded_signatures_shares = vouchers_blind_sign(
-            &params.coconut_params,
-            &blinded_signatures_shares_requests,
-            &vouchers_public_attributes,
-            &validators_key_pairs,
-        );
+        let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =
+            validators_key_pairs
+                .iter()
+                .map(|validator_key_pair| {
+                    vouchers_blind_sign(
+                        &params.coconut_params,
+                        &blinded_signatures_shares_requests,
+                        &vouchers_public_attributes,
+                        &validator_key_pair,
+                    )
+                })
+                .collect();
+
+        let blinded_signatures_shares = (0..blinded_signatures_shares_per_validator[0].len())
+            .map(|blinded_signatures_shares_index| {
+                blinded_signatures_shares_per_validator
+                    .iter()
+                    .map(|blinded_signatures_shares_of_one_validator| {
+                        blinded_signatures_shares_of_one_validator[blinded_signatures_shares_index]
+                            .clone()
+                    })
+                    .collect::<BlindedSignatureShares>()
+            })
+            .collect::<Vec<BlindedSignatureShares>>();
 
         // unblind partial signatures
         let signatures_shares = unblind_vouchers_signatures_shares(
@@ -843,56 +876,57 @@ mod tests {
         //     proof_to_request.blinded_pay
         // );
 
-        assert!(verify_request_vouchers(
-            &params.coconut_params,
-            &validators_verification_key,
-            &range_proof_verification_key,
-            &proof_to_request,
-            &to_be_spent_vouchers_public_attributes
-        ));
+        // TODO continue here
+        // assert!(verify_request_vouchers(
+        //     &params.coconut_params,
+        //     &validators_verification_key,
+        //     &range_proof_verification_key,
+        //     &proof_to_request,
+        //     &to_be_spent_vouchers_public_attributes
+        // ));
 
-        // bulletin_board.add_tags(&double_spending_tags);
+        // // bulletin_board.add_tags(&double_spending_tags);
 
-        let to_be_issued_blinded_signatures_shares = vouchers_blind_sign(
-            &params.coconut_params,
-            &to_be_issued_blinded_signatures_shares_requests,
-            &to_be_issued_vouchers_public_attributes,
-            &validators_key_pairs,
-        );
+        // let to_be_issued_blinded_signatures_shares = vouchers_blind_sign(
+        //     &params.coconut_params,
+        //     &to_be_issued_blinded_signatures_shares_requests,
+        //     &to_be_issued_vouchers_public_attributes,
+        //     &validators_key_pairs,
+        // );
 
-        // user again
-        let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(
-            &params.coconut_params,
-            &to_be_issued_blinded_signatures_shares,
-            &to_be_issued_vouchers,
-            &to_be_issued_blinded_signatures_shares_openings,
-            &to_be_issued_blinded_signatures_shares_requests,
-            &validators_verification_keys,
-        );
+        // // user again
+        // let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(
+        //     &params.coconut_params,
+        //     &to_be_issued_blinded_signatures_shares,
+        //     &to_be_issued_vouchers,
+        //     &to_be_issued_blinded_signatures_shares_openings,
+        //     &to_be_issued_blinded_signatures_shares_requests,
+        //     &validators_verification_keys,
+        // );
 
-        let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
-            &params.coconut_params,
-            &to_be_issued_signatures_shares,
-            &to_be_issued_vouchers,
-            &validators_verification_key,
-        );
+        // let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
+        //     &params.coconut_params,
+        //     &to_be_issued_signatures_shares,
+        //     &to_be_issued_vouchers,
+        //     &validators_verification_key,
+        // );
 
-        signed_vouchers_list.confirm_vouchers_spent();
+        // signed_vouchers_list.confirm_vouchers_spent();
 
-        assert!(
-            signed_vouchers_list.unspent_vouchers.len() == 4
-                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-                && signed_vouchers_list.spent_vouchers.len() == 1
-        );
+        // assert!(
+        //     signed_vouchers_list.unspent_vouchers.len() == 4
+        //         && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+        //         && signed_vouchers_list.spent_vouchers.len() == 1
+        // );
 
-        signed_vouchers_list
-            .add_new_unspent_vouchers(&to_be_issued_vouchers, &to_be_issued_signatures);
+        // signed_vouchers_list
+        //     .add_new_unspent_vouchers(&to_be_issued_vouchers, &to_be_issued_signatures);
 
-        assert!(
-            signed_vouchers_list.unspent_vouchers.len() == 6
-                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-                && signed_vouchers_list.spent_vouchers.len() == 1
-        );
+        // assert!(
+        //     signed_vouchers_list.unspent_vouchers.len() == 6
+        //         && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+        //         && signed_vouchers_list.spent_vouchers.len() == 1
+        // );
     }
 
     #[test]

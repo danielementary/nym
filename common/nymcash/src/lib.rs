@@ -91,9 +91,10 @@ struct SignedVoucher {
 }
 
 struct SignedVouchersList {
-    unspent_vouchers: Vec<SignedVoucher>, // vouchers that have not yet been spent
-    spent_vouchers: Vec<SignedVoucher>,   // voucher that have already been spent
-    to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for voucher before they are spent
+    unspent_vouchers: Vec<SignedVoucher>, // signed vouchers that have not yet been spent
+    spent_vouchers: Vec<SignedVoucher>,   // signed vouchers that have already been spent
+    to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for signed voucher before they are spent
+    to_be_issued_vouchers: Vec<Voucher>,      // temporary place for vouchers before being issued
 }
 
 struct ThetaSpendAndInfos {
@@ -108,11 +109,6 @@ struct ThetaRequestAndInfos {
     to_be_spent_infos: Vec<Attributes>,
 }
 
-struct RequestVouchersAndOpenings {
-    to_be_issued_vouchers: Vec<Voucher>,
-    to_be_issued_blinded_signatures_shares_openings: Vec<Openings>,
-}
-
 impl SignedVouchersList {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
         let unspent_vouchers = izip!(vouchers.iter(), signatures.iter())
@@ -124,16 +120,18 @@ impl SignedVouchersList {
 
         let spent_vouchers = vec![];
         let to_be_spent_vouchers = vec![];
+        let to_be_issued_vouchers = vec![];
 
         SignedVouchersList {
             unspent_vouchers,
             spent_vouchers,
             to_be_spent_vouchers,
+            to_be_issued_vouchers,
         }
     }
 
-    fn add_new_unspent_vouchers(&mut self, vouchers: &[Voucher], signatures: &[Signature]) {
-        for (voucher, signature) in izip!(vouchers.iter(), signatures.iter()) {
+    fn add_to_be_issued_vouchers(&mut self, signatures: &[Signature]) {
+        for (voucher, signature) in izip!(self.to_be_issued_vouchers.iter(), signatures.iter()) {
             let new_unspent_voucher = SignedVoucher {
                 voucher: *voucher,
                 signature: *signature,
@@ -141,6 +139,8 @@ impl SignedVouchersList {
 
             self.unspent_vouchers.push(new_unspent_voucher);
         }
+
+        self.to_be_issued_vouchers = vec![];
     }
 
     // returns a list of indices of the vouchers to be spend for given values
@@ -191,7 +191,7 @@ impl SignedVouchersList {
         pay: &Scalar,
         to_be_issued_values: &[Scalar],
         to_be_spent_values: &[Scalar],
-    ) -> (ThetaRequestAndInfos, RequestVouchersAndOpenings) {
+    ) -> (ThetaRequestAndInfos, Vec<Openings>) {
         assert!(self.to_be_spent_vouchers.len() == 0);
 
         let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
@@ -255,6 +255,10 @@ impl SignedVouchersList {
         )
         .unwrap();
 
+        for to_be_issued_voucher in to_be_issued_vouchers {
+            self.to_be_issued_vouchers.push(to_be_issued_voucher);
+        }
+
         (
             ThetaRequestAndInfos {
                 theta,
@@ -262,10 +266,7 @@ impl SignedVouchersList {
                 to_be_issued_infos,
                 to_be_spent_infos,
             },
-            RequestVouchersAndOpenings {
-                to_be_issued_vouchers,
-                to_be_issued_blinded_signatures_shares_openings,
-            },
+            to_be_issued_blinded_signatures_shares_openings,
         )
     }
 
@@ -839,7 +840,7 @@ mod tests {
         let to_be_spent_values = [Scalar::from(10)];
 
         // generate proof pay and spend vouchers and request new vouchers
-        let (proof_to_pay_5_and_request_3_and_2, to_be_issued_vouchers_and_openings) =
+        let (proof_to_pay_5_and_request_3_and_2, to_be_issued_blinded_signatures_shares_openings) =
             signed_vouchers_list.randomise_and_prove_to_request_vouchers(
                 &params.coconut_params,
                 &validators_verification_key,
@@ -884,8 +885,8 @@ mod tests {
         let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(
             &params.coconut_params,
             &to_be_issued_blinded_signatures_shares,
-            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
-            &to_be_issued_vouchers_and_openings.to_be_issued_blinded_signatures_shares_openings,
+            &signed_vouchers_list.to_be_issued_vouchers,
+            &to_be_issued_blinded_signatures_shares_openings,
             &proof_to_pay_5_and_request_3_and_2.to_be_issued_blinded_signatures_shares_requests,
             &validators_verification_keys,
         );
@@ -894,7 +895,7 @@ mod tests {
         let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
             &params.coconut_params,
             &to_be_issued_signatures_shares,
-            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
+            &signed_vouchers_list.to_be_issued_vouchers,
             &validators_verification_key,
         );
 
@@ -902,24 +903,19 @@ mod tests {
         signed_vouchers_list.confirm_vouchers_spent();
 
         // check voucher is marked as spent
-        assert!(
-            signed_vouchers_list.unspent_vouchers.len() == 4
-                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-                && signed_vouchers_list.spent_vouchers.len() == 1
-        );
+        assert_eq!(signed_vouchers_list.unspent_vouchers.len(), 4);
+        assert_eq!(signed_vouchers_list.spent_vouchers.len(), 1);
+        assert_eq!(signed_vouchers_list.to_be_spent_vouchers.len(), 0);
+        assert_eq!(signed_vouchers_list.to_be_issued_vouchers.len(), 2);
 
         // user add new vouchers to her list of unspent voucher
-        signed_vouchers_list.add_new_unspent_vouchers(
-            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
-            &to_be_issued_signatures,
-        );
+        signed_vouchers_list.add_to_be_issued_vouchers(&to_be_issued_signatures);
 
         // check vouchers are added to unspent
-        assert!(
-            signed_vouchers_list.unspent_vouchers.len() == 6
-                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-                && signed_vouchers_list.spent_vouchers.len() == 1
-        );
+        assert_eq!(signed_vouchers_list.unspent_vouchers.len(), 6);
+        assert_eq!(signed_vouchers_list.spent_vouchers.len(), 1);
+        assert_eq!(signed_vouchers_list.to_be_spent_vouchers.len(), 0);
+        assert_eq!(signed_vouchers_list.to_be_issued_vouchers.len(), 0);
     }
 
     #[test]

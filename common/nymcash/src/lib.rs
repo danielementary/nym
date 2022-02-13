@@ -104,9 +104,13 @@ struct ThetaSpendAndInfos {
 struct ThetaRequestAndInfos {
     theta: ThetaRequestPhase,
     to_be_issued_blinded_signatures_shares_requests: Vec<BlindSignRequest>,
-    to_be_issued_vouchers: Vec<Voucher>,
     to_be_issued_infos: Vec<Attributes>,
     to_be_spent_infos: Vec<Attributes>,
+}
+
+struct RequestVouchersAndOpenings {
+    to_be_issued_vouchers: Vec<Voucher>,
+    to_be_issued_blinded_signatures_shares_openings: Vec<Openings>,
 }
 
 impl SignedVouchersList {
@@ -187,7 +191,7 @@ impl SignedVouchersList {
         pay: &Scalar,
         to_be_issued_values: &[Scalar],
         to_be_spent_values: &[Scalar],
-    ) -> ThetaRequestAndInfos {
+    ) -> (ThetaRequestAndInfos, RequestVouchersAndOpenings) {
         assert!(self.to_be_spent_vouchers.len() == 0);
 
         let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
@@ -251,13 +255,18 @@ impl SignedVouchersList {
         )
         .unwrap();
 
-        ThetaRequestAndInfos {
-            theta,
-            to_be_issued_blinded_signatures_shares_requests,
-            to_be_issued_vouchers,
-            to_be_issued_infos,
-            to_be_spent_infos,
-        }
+        (
+            ThetaRequestAndInfos {
+                theta,
+                to_be_issued_blinded_signatures_shares_requests,
+                to_be_issued_infos,
+                to_be_spent_infos,
+            },
+            RequestVouchersAndOpenings {
+                to_be_issued_vouchers,
+                to_be_issued_blinded_signatures_shares_openings,
+            },
+        )
     }
 
     fn randomise_and_prove_to_be_spent_vouchers(
@@ -783,6 +792,7 @@ mod tests {
                 })
                 .collect();
 
+        // transpose shares signed by validators into all share for the same voucher
         let blinded_signatures_shares = (0..blinded_signatures_shares_per_validator[0].len())
             .map(|blinded_signatures_shares_index| {
                 blinded_signatures_shares_per_validator
@@ -823,13 +833,14 @@ mod tests {
                 && signed_vouchers_list.spent_vouchers.len() == 0
         );
 
+        // define amount to pay and values to be issued/spent
         let pay = Scalar::from(5);
-
         let to_be_issued_values = [Scalar::from(3), Scalar::from(2)];
         let to_be_spent_values = [Scalar::from(10)];
 
-        let proof_to_pay_5_and_request_3_and_2 = signed_vouchers_list
-            .randomise_and_prove_to_request_vouchers(
+        // generate proof pay and spend vouchers and request new vouchers
+        let (proof_to_pay_5_and_request_3_and_2, to_be_issued_vouchers_and_openings) =
+            signed_vouchers_list.randomise_and_prove_to_request_vouchers(
                 &params.coconut_params,
                 &validators_verification_key,
                 &range_proof_verification_key,
@@ -841,7 +852,7 @@ mod tests {
                 &to_be_spent_values,
             );
 
-        // validators
+        // validators verify proof and issue signatures for new vouchers
         let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =
             validators_key_pairs
                 .iter()
@@ -854,6 +865,7 @@ mod tests {
                 })
                 .collect();
 
+        // transpose shares signed by validators into all share for the same voucher
         let to_be_issued_blinded_signatures_shares = (0..blinded_signatures_shares_per_validator
             [0]
         .len())
@@ -868,39 +880,46 @@ mod tests {
             })
             .collect::<Vec<BlindedSignatureShares>>();
 
-        // user again
+        // user unblinds new vouchers signatures
         let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(
             &params.coconut_params,
             &to_be_issued_blinded_signatures_shares,
-            &to_be_issued_vouchers,
-            &to_be_issued_blinded_signatures_shares_openings,
-            &to_be_issued_blinded_signatures_shares_requests,
+            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
+            &to_be_issued_vouchers_and_openings.to_be_issued_blinded_signatures_shares_openings,
+            &proof_to_pay_5_and_request_3_and_2.to_be_issued_blinded_signatures_shares_requests,
             &validators_verification_keys,
         );
 
-        // let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
-        //     &params.coconut_params,
-        //     &to_be_issued_signatures_shares,
-        //     &to_be_issued_vouchers,
-        //     &validators_verification_key,
-        // );
+        // user aggregates new vouchers signatures
+        let to_be_issued_signatures = aggregate_vouchers_signatures_shares(
+            &params.coconut_params,
+            &to_be_issued_signatures_shares,
+            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
+            &validators_verification_key,
+        );
 
-        // signed_vouchers_list.confirm_vouchers_spent();
+        // user mark vouchers as spent and add new ones
+        signed_vouchers_list.confirm_vouchers_spent();
 
-        // assert!(
-        //     signed_vouchers_list.unspent_vouchers.len() == 4
-        //         && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-        //         && signed_vouchers_list.spent_vouchers.len() == 1
-        // );
+        // check voucher is marked as spent
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 4
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 1
+        );
 
-        // signed_vouchers_list
-        //     .add_new_unspent_vouchers(&to_be_issued_vouchers, &to_be_issued_signatures);
+        // user add new vouchers to her list of unspent voucher
+        signed_vouchers_list.add_new_unspent_vouchers(
+            &to_be_issued_vouchers_and_openings.to_be_issued_vouchers,
+            &to_be_issued_signatures,
+        );
 
-        // assert!(
-        //     signed_vouchers_list.unspent_vouchers.len() == 6
-        //         && signed_vouchers_list.to_be_spent_vouchers.len() == 0
-        //         && signed_vouchers_list.spent_vouchers.len() == 1
-        // );
+        // check vouchers are added to unspent
+        assert!(
+            signed_vouchers_list.unspent_vouchers.len() == 6
+                && signed_vouchers_list.to_be_spent_vouchers.len() == 0
+                && signed_vouchers_list.spent_vouchers.len() == 1
+        );
     }
 
     #[test]

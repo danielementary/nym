@@ -8,15 +8,19 @@ use nymcoconut::{
     VerificationKey,
 };
 
+// define new types for clarity
 type Attribute = Scalar;
 type Attributes = Vec<Attribute>;
 
-type Openings = Vec<Scalar>;
+type Opening = Scalar;
+type Openings = Vec<Opening>;
 
-type BlindedSignatureShares = Vec<BlindedSignatureShare>;
 type BlindedSignatureShare = BlindedSignature;
+type BlindedSignatureShares = Vec<BlindedSignatureShare>;
+
 type SignatureShares = Vec<SignatureShare>;
 
+// define e-cash parameters with Coconut parameters and maxmimum values
 pub struct ECashParams {
     pub coconut_params: Parameters,
     pub pay_max: Scalar,
@@ -42,7 +46,7 @@ struct Voucher {
 }
 
 impl Voucher {
-    fn new(coconut_params: &Parameters, binding_number: Attribute, value: Attribute) -> Voucher {
+    fn new(coconut_params: &Parameters, binding_number: Attribute, value: Attribute) -> Self {
         Self {
             binding_number,
             value,
@@ -58,7 +62,7 @@ impl Voucher {
     ) -> Vec<Self> {
         values
             .iter()
-            .map(|v| Voucher::new(coconut_params, *binding_number, *v))
+            .map(|value| Voucher::new(coconut_params, *binding_number, *value))
             .collect()
     }
 
@@ -84,24 +88,29 @@ impl Voucher {
     }
 }
 
+// store a given voucher with its corresponding signature
 #[derive(Debug, Copy, Clone)]
-struct SignedVoucher {
+struct VoucherAndSignature {
     voucher: Voucher,
     signature: Signature,
 }
 
-struct SignedVouchersList {
-    unspent_vouchers: Vec<SignedVoucher>, // signed vouchers that have not yet been spent
-    spent_vouchers: Vec<SignedVoucher>,   // signed vouchers that have already been spent
-    to_be_spent_vouchers: Vec<SignedVoucher>, // temporary place for signed voucher before they are spent
-    to_be_issued_vouchers: Vec<Voucher>,      // temporary place for vouchers before being issued
+// store all the vouchers and signatures of a given user
+struct VouchersAndSignatures {
+    unspent_vouchers: Vec<VoucherAndSignature>, // signed vouchers that have not yet been spent
+    to_be_issued_vouchers: Vec<Voucher>,        // temporary place for vouchers before being issued
+    to_be_spent_vouchers: Vec<VoucherAndSignature>, // temporary place for signed voucher before they are spent
+    spent_vouchers: Vec<VoucherAndSignature>,       // signed vouchers that have already been spent
 }
 
+// used to return a proof theta and the corresponding (public) infos to verify it
 struct ThetaSpendAndInfos {
     theta: ThetaSpendPhase,
     infos: Attributes,
 }
 
+// used to return a proof theta and the corresponding (public) infos to verify it
+// as well as the requests to get the to_be_issued_vouchers signed
 struct ThetaRequestAndInfos {
     theta: ThetaRequestPhase,
     to_be_issued_blinded_signatures_shares_requests: Vec<BlindSignRequest>,
@@ -109,47 +118,43 @@ struct ThetaRequestAndInfos {
     to_be_spent_infos: Vec<Attributes>,
 }
 
-impl SignedVouchersList {
+impl VouchersAndSignatures {
     fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
+        if vouchers.len() != signatures.len() {
+            panic!("vouchers and signatures must have the same length")
+        }
+
+        // start with some unspent vouchers
         let unspent_vouchers = izip!(vouchers.iter(), signatures.iter())
-            .map(|(voucher, signature)| SignedVoucher {
+            .map(|(voucher, signature)| VoucherAndSignature {
                 voucher: *voucher,
                 signature: *signature,
             })
             .collect();
 
-        let spent_vouchers = vec![];
         let to_be_spent_vouchers = vec![];
         let to_be_issued_vouchers = vec![];
+        let spent_vouchers = vec![];
 
-        SignedVouchersList {
+        Self {
             unspent_vouchers,
-            spent_vouchers,
             to_be_spent_vouchers,
             to_be_issued_vouchers,
+            spent_vouchers,
         }
     }
 
-    fn add_to_be_issued_vouchers(&mut self, signatures: &[Signature]) {
-        for (voucher, signature) in izip!(self.to_be_issued_vouchers.iter(), signatures.iter()) {
-            let new_unspent_voucher = SignedVoucher {
-                voucher: *voucher,
-                signature: *signature,
-            };
-
-            self.unspent_vouchers.push(new_unspent_voucher);
+    // find unspent vouchers and move them to be spend for given values
+    fn find(&mut self, values: &[Attribute]) {
+        if values.is_empty() {
+            panic!("values must not be empty");
         }
 
-        self.to_be_issued_vouchers = vec![];
-    }
-
-    // returns a list of indices of the vouchers to be spend for given values
-    fn find(&self, values: &[Attribute]) -> Vec<usize> {
         let mut indices = Vec::new();
 
         for value in values {
-            for (index, signed_voucher) in self.unspent_vouchers.iter().enumerate() {
-                if signed_voucher.voucher.value == *value && !indices.contains(&index) {
+            for (index, voucher_and_signature) in self.unspent_vouchers.iter().enumerate() {
+                if voucher_and_signature.voucher.value == *value && !indices.contains(&index) {
                     indices.push(index);
                     break;
                 }
@@ -157,14 +162,15 @@ impl SignedVouchersList {
         }
 
         // if we have not find vouchers for every value, return an empty vec
-        if indices.len() == values.len() {
-            indices
-        } else {
-            vec![]
+        if indices.len() != values.len() {
+            panic!("could not find unspent vouchers for the given values");
         }
+
+        self.move_unspent_vouchers_to_to_be_spent(&indices);
     }
 
-    fn move_vouchers_from_unspent_to_to_be_spent(&mut self, indices: &[usize]) {
+    // moves unspent vouchers according to provided indices to to be spent vouchers
+    fn move_unspent_vouchers_to_to_be_spent(&mut self, indices: &[usize]) {
         let mut unspent_vouchers = Vec::new();
         let mut to_be_spent_vouchers = Vec::new();
 
@@ -180,6 +186,35 @@ impl SignedVouchersList {
         self.to_be_spent_vouchers = to_be_spent_vouchers;
     }
 
+    // move to be issued vouchers to unspent vouchers with their corresponding signatures
+    fn move_to_be_issued_vouchers_to_unspent(&mut self, signatures: &[Signature]) {
+        if self.to_be_issued_vouchers.len() != signatures.len() {
+            panic!("to be issued vouchers and signatures must have same length.");
+        }
+
+        for (voucher, signature) in izip!(self.to_be_issued_vouchers.iter(), signatures.iter()) {
+            let new_unspent_voucher = VoucherAndSignature {
+                voucher: *voucher,
+                signature: *signature,
+            };
+
+            self.unspent_vouchers.push(new_unspent_voucher);
+        }
+
+        self.to_be_issued_vouchers = vec![];
+    }
+
+    // move to be spent vouchers to spent with their corresponding signatures
+    fn move_to_be_spent_vouchers_to_spent(&mut self) {
+        for voucher in self.to_be_spent_vouchers.iter() {
+            self.spent_vouchers.push(*voucher);
+        }
+
+        self.to_be_spent_vouchers.clear();
+    }
+
+    // prepare proof and material to verify it for spending amount _pay_
+    // spending _to_be_spent_values_ and being issued _to_be_issued_values_ vouchers
     fn randomise_and_prove_to_request_vouchers(
         &mut self,
         coconut_params: &Parameters,
@@ -192,51 +227,75 @@ impl SignedVouchersList {
         to_be_issued_values: &[Scalar],
         to_be_spent_values: &[Scalar],
     ) -> (ThetaRequestAndInfos, Vec<Openings>) {
-        assert!(self.to_be_spent_vouchers.len() == 0);
+        if !self.to_be_issued_vouchers.is_empty() {
+            panic!("to_be_issued_vouchers must be empty");
+        }
 
-        let to_be_spent_vouchers_indices = self.find(&to_be_spent_values);
-        self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+        if !self.to_be_spent_vouchers.is_empty() {
+            panic!("to_be_spent_vouchers must be empty");
+        }
 
-        assert!(self.to_be_spent_vouchers.len() == to_be_spent_values.len());
+        if to_be_issued_values.is_empty() {
+            panic!("to_be_issued_values must not be empty");
+        }
+
+        if to_be_spent_values.is_empty() {
+            panic!("to_be_spent_values must not be empty");
+        }
+
+        // find vouchers to be spent
+        self.find(&to_be_spent_values);
+
+        if self.to_be_spent_vouchers.len() != to_be_spent_values.len() {
+            panic!("to_be_spent_vouchers must have same length as to_be_spent_values");
+        }
 
         let number_of_to_be_issued_vouchers = to_be_issued_values.len() as u8;
         let number_of_to_be_spent_vouchers = to_be_spent_values.len() as u8;
 
         let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
 
-        // to be issued
+        // create new vouchers to be issued
         let to_be_issued_vouchers =
             Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
+
+        // prepare blind signatures for new vouchers
         let (
             to_be_issued_blinded_signatures_shares_openings,
             to_be_issued_blinded_signatures_shares_requests,
         ) = prepare_vouchers_blind_sign(&coconut_params, &to_be_issued_vouchers);
+
+        // prepare to be issued vouchers attributes
         let to_be_issued_serial_numbers: Attributes = to_be_issued_vouchers
             .iter()
             .map(|voucher| voucher.serial_number)
             .collect();
+
         let to_be_issued_infos: Vec<Attributes> = to_be_issued_vouchers
             .iter()
             .map(|voucher| voucher.public_attributes())
             .collect();
 
-        // to be spent
+        // prepare to be spent vouchers attributes and signatures
         let to_be_spent_serial_numbers: Attributes = self
             .to_be_spent_vouchers
             .iter()
-            .map(|signed_voucher| signed_voucher.voucher.serial_number)
+            .map(|voucher_and_signature| voucher_and_signature.voucher.serial_number)
             .collect();
-        let to_be_spent_signatures: Vec<Signature> = self
-            .to_be_spent_vouchers
-            .iter()
-            .map(|signed_voucher| signed_voucher.signature)
-            .collect();
+
         let to_be_spent_infos: Vec<Attributes> = self
             .to_be_spent_vouchers
             .iter()
-            .map(|signed_voucher| signed_voucher.voucher.public_attributes())
+            .map(|voucher_and_signature| voucher_and_signature.voucher.public_attributes())
             .collect();
 
+        let to_be_spent_signatures: Vec<Signature> = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|voucher_and_signature| voucher_and_signature.signature)
+            .collect();
+
+        // prepare proof
         let theta = randomise_and_request_vouchers(
             &coconut_params,
             &validators_verification_key,
@@ -255,6 +314,7 @@ impl SignedVouchersList {
         )
         .unwrap();
 
+        // add new vouchers to to_be_issued_vouchers
         for to_be_issued_voucher in to_be_issued_vouchers {
             self.to_be_issued_vouchers.push(to_be_issued_voucher);
         }
@@ -276,33 +336,43 @@ impl SignedVouchersList {
         validator_verification_key: &VerificationKey,
         values: &[Attribute],
     ) -> ThetaSpendAndInfos {
-        assert!(self.to_be_spent_vouchers.len() == 0);
+        if !self.to_be_spent_vouchers.is_empty() {
+            panic!("to_be_spent_vouchers must be empty");
+        }
+
+        if values.is_empty() {
+            panic!("values must not be empty");
+        }
 
         // find vouchers to be spent
-        let to_be_spent_vouchers_indices = self.find(&values);
+        self.find(&values);
 
-        // move vouchers from unspent to to be spent
-        self.move_vouchers_from_unspent_to_to_be_spent(&to_be_spent_vouchers_indices);
+        if self.to_be_spent_vouchers.len() != values.len() {
+            panic!("to_be_spent_vouchers must have same length as values");
+        }
 
-        assert!(self.to_be_spent_vouchers.len() > 0);
-
+        // prepare to be issued vouchers attributes and sigantures
         let binding_number = self.to_be_spent_vouchers[0].voucher.binding_number;
-        let (values, serial_numbers): (Attributes, Attributes) = self
+
+        let serial_numbers: Attributes = self
             .to_be_spent_vouchers
             .iter()
-            .map(|signed_voucher| {
-                (
-                    signed_voucher.voucher.value,
-                    signed_voucher.voucher.serial_number,
-                )
-            })
-            .unzip();
+            .map(|voucher_and_signature| voucher_and_signature.voucher.serial_number)
+            .collect();
+
+        let infos: Attributes = self
+            .to_be_spent_vouchers
+            .iter()
+            .map(|voucher_and_signature| voucher_and_signature.voucher.info)
+            .collect();
+
         let signatures: Vec<Signature> = self
             .to_be_spent_vouchers
             .iter()
-            .map(|signed_voucher| signed_voucher.signature)
+            .map(|voucher_and_signature| voucher_and_signature.signature)
             .collect();
 
+        // prepare proof
         let theta = randomise_and_spend_vouchers(
             coconut_params,
             validator_verification_key,
@@ -313,21 +383,7 @@ impl SignedVouchersList {
         )
         .unwrap();
 
-        let infos: Attributes = self
-            .to_be_spent_vouchers
-            .iter()
-            .map(|signed_voucher| signed_voucher.voucher.info)
-            .collect();
-
         ThetaSpendAndInfos { theta, infos }
-    }
-
-    fn confirm_vouchers_spent(&mut self) {
-        for voucher in self.to_be_spent_vouchers.iter() {
-            self.spent_vouchers.push(*voucher);
-        }
-
-        self.to_be_spent_vouchers.clear();
     }
 }
 
@@ -340,8 +396,8 @@ impl ThetaSpendAndInfos {
         bulletin_board: &mut BulletinBoard,
         values: &[Scalar],
     ) -> bool {
-        // check double spending
         let double_spending_tags = &self.theta.blinded_serial_numbers;
+        // check double spending
         if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags) {
             return false;
         }
@@ -625,7 +681,7 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+        let mut signed_vouchers_list = VouchersAndSignatures::new(&vouchers, &signatures);
 
         // check we actually have 5 unspent vouchers
         assert!(
@@ -661,7 +717,7 @@ mod tests {
 
         // user mark her vouchers as spent if accepted by entity a
         if proof_to_spend_30_accepted {
-            signed_vouchers_list.confirm_vouchers_spent();
+            signed_vouchers_list.move_to_be_spent_vouchers_to_spent();
         }
 
         // check the proof is accepted and vouchers are moved to spent
@@ -721,7 +777,7 @@ mod tests {
 
         // user mark her vouchers as spent if accepted by entity a
         if proof_to_spend_20_accepted {
-            signed_vouchers_list.confirm_vouchers_spent();
+            signed_vouchers_list.move_to_be_spent_vouchers_to_spent();
         }
 
         // check the proof is accepted and vouchers are moved to spent
@@ -825,7 +881,7 @@ mod tests {
         );
 
         // bring together vouchers and corresponding signatures
-        let mut signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
+        let mut signed_vouchers_list = VouchersAndSignatures::new(&vouchers, &signatures);
 
         // check we actually have 5 unspent vouchers
         assert!(
@@ -900,7 +956,7 @@ mod tests {
         );
 
         // user mark vouchers as spent and add new ones
-        signed_vouchers_list.confirm_vouchers_spent();
+        signed_vouchers_list.move_to_be_spent_vouchers_to_spent();
 
         // check voucher is marked as spent
         assert_eq!(signed_vouchers_list.unspent_vouchers.len(), 4);
@@ -909,223 +965,12 @@ mod tests {
         assert_eq!(signed_vouchers_list.to_be_issued_vouchers.len(), 2);
 
         // user add new vouchers to her list of unspent voucher
-        signed_vouchers_list.add_to_be_issued_vouchers(&to_be_issued_signatures);
+        signed_vouchers_list.move_to_be_issued_vouchers_to_unspent(&to_be_issued_signatures);
 
         // check vouchers are added to unspent
         assert_eq!(signed_vouchers_list.unspent_vouchers.len(), 6);
         assert_eq!(signed_vouchers_list.spent_vouchers.len(), 1);
         assert_eq!(signed_vouchers_list.to_be_spent_vouchers.len(), 0);
         assert_eq!(signed_vouchers_list.to_be_issued_vouchers.len(), 0);
-    }
-
-    #[test]
-    fn test_signed_vouchers_list_find_empty_vouchers() {
-        let vouchers = vec![];
-        let signatures = vec![];
-
-        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
-
-        let values = vec![];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-    }
-
-    #[test]
-    fn test_signed_vouchers_list_find_one_voucher() {
-        // define e-cash parameters
-        let num_attributes = Voucher::number_of_attributes();
-        let pay_max = Scalar::from(10);
-        let voucher_max = Scalar::from(10);
-
-        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
-
-        let number_of_vouchers = 1;
-
-        let binding_number = params.coconut_params.random_scalar();
-        let values = [Scalar::from(10)];
-
-        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
-        let signatures: Vec<Signature> = (0..number_of_vouchers)
-            .map(|_| {
-                Signature(
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                )
-            })
-            .collect();
-
-        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
-
-        let values = vec![];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0]);
-
-        let values = vec![Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-    }
-
-    #[test]
-    fn test_signed_vouchers_list_find_three_equal_vouchers() {
-        // define e-cash parameters
-        let num_attributes = Voucher::number_of_attributes();
-        let pay_max = Scalar::from(10);
-        let voucher_max = Scalar::from(10);
-
-        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
-
-        let number_of_vouchers = 3;
-
-        let binding_number = params.coconut_params.random_scalar();
-        let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-
-        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
-        let signatures: Vec<Signature> = (0..number_of_vouchers)
-            .map(|_| {
-                Signature(
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                )
-            })
-            .collect();
-
-        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
-
-        let values = vec![];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0]);
-
-        let values = vec![Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0, 1]);
-
-        let values = vec![Scalar::from(5), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(5), Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0, 1, 2]);
-
-        let values = vec![Scalar::from(5), Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(5), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![
-            Scalar::from(10),
-            Scalar::from(10),
-            Scalar::from(10),
-            Scalar::from(10),
-        ];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-    }
-
-    #[test]
-    fn test_signed_vouchers_list_find_three_vouchers() {
-        // define e-cash parameters
-        let num_attributes = Voucher::number_of_attributes();
-        let pay_max = Scalar::from(10);
-        let voucher_max = Scalar::from(10);
-
-        let params = ECashParams::new(num_attributes, pay_max, voucher_max);
-
-        let number_of_vouchers = 3;
-
-        let binding_number = params.coconut_params.random_scalar();
-        let values = [Scalar::from(10), Scalar::from(5), Scalar::from(10)];
-
-        let vouchers = Voucher::new_many(&params.coconut_params, &binding_number, &values);
-        let signatures: Vec<Signature> = (0..number_of_vouchers)
-            .map(|_| {
-                Signature(
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                    params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                )
-            })
-            .collect();
-
-        let signed_vouchers_list = SignedVouchersList::new(&vouchers, &signatures);
-
-        let values = vec![];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
-
-        let values = vec![Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0]);
-
-        let values = vec![Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![1]);
-
-        let values = vec![Scalar::from(10), Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0, 1]);
-
-        let values = vec![Scalar::from(5), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![1, 0]);
-
-        let values = vec![Scalar::from(10), Scalar::from(5), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0, 1, 2]);
-
-        let values = vec![Scalar::from(5), Scalar::from(10), Scalar::from(10)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![1, 0, 2]);
-
-        let values = vec![Scalar::from(10), Scalar::from(10), Scalar::from(5)];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices, vec![0, 2, 1]);
-
-        let values = vec![
-            Scalar::from(10),
-            Scalar::from(5),
-            Scalar::from(10),
-            Scalar::from(5),
-        ];
-        let indices = signed_vouchers_list.find(&values);
-        assert_eq!(indices.len(), 0);
     }
 }

@@ -904,9 +904,9 @@ impl ProofRequestPhase {
                         .iter()
                         .enumerate()
                         .map(|(index, witness_value_decomposition)| {
-                            params.hs1()[1] * witness_value_decomposition
-                                + params.hs1()[1]
-                                    * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                            params.hs1()[1]
+                                * (witness_value_decomposition
+                                    * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                         })
                         .sum::<G1Projective>()
                     + params.hs1()[2] * witness_serial_number
@@ -1120,18 +1120,18 @@ impl ProofRequestPhase {
                 .chain(hs1_bytes.iter().map(|v| v.as_ref()))
                 .chain(hs2_bytes.iter().map(|v| v.as_ref()))
                 .chain(verification_key_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_verification_key_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(numbers_of_vouchers_bytes.iter().map(|v| v.as_ref()))
-                // .chain(range_proof_parameters_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     to_be_issued_witnesses_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
+                .chain(
+                    range_proof_verification_key_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(numbers_of_vouchers_bytes.iter().map(|v| v.as_ref()))
+                .chain(range_proof_parameters_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_witnesses_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
                 // .chain(
                 //     to_be_issued_witnesses_binding_numbers_commitments_bytes
                 //         .iter()
@@ -1610,18 +1610,18 @@ impl ProofRequestPhase {
                 .chain(hs1_bytes.iter().map(|v| v.as_ref()))
                 .chain(hs2_bytes.iter().map(|v| v.as_ref()))
                 .chain(verification_key_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_verification_key_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(numbers_of_vouchers_bytes.iter().map(|v| v.as_ref()))
-                // .chain(range_proof_parameters_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     to_be_issued_witnesses_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
+                .chain(
+                    range_proof_verification_key_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(numbers_of_vouchers_bytes.iter().map(|v| v.as_ref()))
+                .chain(range_proof_parameters_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_witnesses_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
                 // .chain(
                 //     to_be_issued_witnesses_binding_numbers_commitments_bytes
                 //         .iter()

@@ -432,6 +432,7 @@ impl ThetaRequestAndInfos {
         &self,
         coconut_params: &Parameters,
         validator_key_pair: &KeyPair,
+        verification_key: &VerificationKey,
         range_proof_verification_key: &VerificationKey,
     ) -> Vec<BlindedSignatureShare> {
         // TODO
@@ -446,7 +447,8 @@ impl ThetaRequestAndInfos {
 
         if !verify_request_vouchers(
             &coconut_params,
-            &validator_key_pair.verification_key(),
+            &verification_key,
+            &range_proof_verification_key,
             &self.theta,
             &infos,
         ) {
@@ -889,9 +891,9 @@ mod tests {
                 && signed_vouchers_list.spent_vouchers.len() == 0
         );
 
-        // define amount to pay and values to be issued/spent
+        // define amount the user paid for and values to be issued/spent
         let pay = Scalar::from(5);
-        let to_be_issued_values = [Scalar::from(3), Scalar::from(2)];
+        let to_be_issued_values = [Scalar::from(10), Scalar::from(5)];
         let to_be_spent_values = [Scalar::from(10)];
 
         // generate proof pay and spend vouchers and request new vouchers
@@ -910,7 +912,7 @@ mod tests {
 
         assert_eq!(
             proof_to_pay_5_and_request_3_and_2.theta.blinded_pay,
-            params.coconut_params.gen2() * pay
+            params.coconut_params.hs2()[1] * pay
         );
 
         // validators verify proof and issue signatures for new vouchers
@@ -921,6 +923,7 @@ mod tests {
                     proof_to_pay_5_and_request_3_and_2.verify(
                         &params.coconut_params,
                         &validator_key_pair,
+                        &validators_verification_key,
                         &range_proof_verification_key,
                     )
                 })

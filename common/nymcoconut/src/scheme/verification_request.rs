@@ -739,6 +739,7 @@ pub fn randomise_and_request_vouchers(
 pub fn verify_request_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
+    range_proof_verification_key: &VerificationKey,
     theta: &ThetaRequestPhase,
     infos: &[Scalar],
 ) -> bool {
@@ -746,10 +747,9 @@ pub fn verify_request_vouchers(
         return false;
     }
 
-    // TODO debug proof later
-    // if !theta.verify_proof(params, verification_key, range_proof_verification_key) {
-    //     return false;
-    // }
+    if !theta.verify_proof(params, verification_key, range_proof_verification_key) {
+        return false;
+    }
 
     let to_be_spent_attributes_commitments: Vec<G2Projective> = theta
         .to_be_spent_attributes_commitments

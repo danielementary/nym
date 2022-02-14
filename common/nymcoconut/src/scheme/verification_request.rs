@@ -291,8 +291,9 @@ fn decompose_value(base: u8, number_of_base_elements: u8, value: &Scalar) -> Vec
     let number_of_base_elements: u32 = number_of_base_elements.into();
     let value: u64 = scalar_to_u64(value);
 
-    // the decomposition can only be computed for numbers in [0, base^number_of_base_elements)
-    assert!(value <= base.pow(number_of_base_elements) - 1);
+    if value >= base.pow(number_of_base_elements) {
+        panic!("value must be in range [0, base^number_of_base_elements)");
+    }
 
     let mut decomposition: Vec<Scalar> = Vec::new();
     let mut remainder = value;
@@ -321,13 +322,6 @@ pub fn issue_range_signatures(
     secret_key: &SecretKey,
     base: usize,
 ) -> RangeProofSignatures {
-    let mut range_signatures = vec![];
-
-    for i in 0..base {
-        let signature = issue_signature(&h, &secret_key, &Scalar::from(i as u64));
-        range_signatures.push(signature);
-    }
-
     (0..base)
         .collect::<Vec<_>>()
         .iter()
@@ -916,5 +910,45 @@ mod tests {
         assert_eq!(scalar_to_u64(&Scalar::from(zero)), zero);
         assert_eq!(scalar_to_u64(&Scalar::from(middle_value)), middle_value);
         assert_eq!(scalar_to_u64(&Scalar::from(max)), max);
+    }
+
+    #[test]
+    fn decompose_value_tests() {
+        let base = 4;
+        let number_of_base_elements = 8;
+
+        let zero = Scalar::from(0);
+        let one = Scalar::from(1);
+        let two = Scalar::from(2);
+        let three = Scalar::from(3);
+
+        assert_eq!(
+            decompose_value(base, number_of_base_elements, &Scalar::from(0)),
+            vec![zero; number_of_base_elements as usize]
+        );
+
+        assert_eq!(
+            decompose_value(base, number_of_base_elements, &Scalar::from(1)),
+            vec![one, zero, zero, zero, zero, zero, zero, zero]
+        );
+
+        assert_eq!(
+            decompose_value(base, number_of_base_elements, &Scalar::from(3)),
+            vec![three, zero, zero, zero, zero, zero, zero, zero]
+        );
+
+        assert_eq!(
+            decompose_value(base, number_of_base_elements, &Scalar::from(4)),
+            vec![zero, one, zero, zero, zero, zero, zero, zero]
+        );
+
+        assert_eq!(
+            decompose_value(
+                base,
+                number_of_base_elements,
+                &Scalar::from((base as u64).pow(number_of_base_elements as u32) - 1)
+            ),
+            vec![three, three, three, three, three, three, three, three]
+        );
     }
 }

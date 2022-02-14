@@ -914,8 +914,9 @@ impl ProofRequestPhase {
         )
         .collect();
 
+        // TODO debug this value
         let to_be_issued_witnesses_binding_numbers_commitments: Vec<G1Projective> = izip!(
-            witnesses_to_be_issued_serial_numbers_openings.iter(),
+            witnesses_to_be_issued_binding_numbers_openings.iter(),
             to_be_issued_hm_s.iter()
         )
         .map(|(witness_opening, hm)| params.gen1() * witness_opening + hm * witness_binding_number)
@@ -932,8 +933,8 @@ impl ProofRequestPhase {
                     .iter()
                     .enumerate()
                     .map(|(index, witness_value_decomposition)| {
-                        hm * witness_value_decomposition
-                            + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                        hm * (witness_value_decomposition
+                            * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                     })
                     .sum::<G1Projective>()
         })
@@ -1132,70 +1133,70 @@ impl ProofRequestPhase {
                         .iter()
                         .map(|v| v.as_ref()),
                 )
-                // .chain(
-                //     to_be_issued_witnesses_binding_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_witnesses_values_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_witnesses_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_witnesses_attributes_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_witnesses_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_witnesses_decomposition_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(to_be_issued_commitments_bytes.iter().map(|v| v.as_ref()))
-                // .chain(to_be_issued_hm_s_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     to_be_issued_binding_number_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_values_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_attributes_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(blinded_pay_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_decompositions_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // ),
+                .chain(
+                    to_be_issued_witnesses_binding_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_witnesses_decomposition_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(to_be_issued_commitments_bytes.iter().map(|v| v.as_ref()))
+                .chain(to_be_issued_hm_s_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_binding_number_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_decompositions_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                ),
         );
 
         // responses
@@ -1339,6 +1340,7 @@ impl ProofRequestPhase {
         )
         .collect();
 
+        // TODO debug this value
         let to_be_issued_witnesses_binding_numbers_commitments: Vec<G1Projective> = izip!(
             to_be_issued_binding_number_commitments.iter(),
             self.responses_to_be_issued_binding_numbers_openings.iter(),
@@ -1372,10 +1374,8 @@ impl ProofRequestPhase {
                         .iter()
                         .enumerate()
                         .map(|(index, response_value_decomposition)| {
-                            hm * response_value_decomposition
-                                + hm * (Scalar::from(
-                                    (self.range_proof_base_u as u64).pow(index as u32),
-                                ))
+                            hm * (response_value_decomposition
+                                * Scalar::from((self.range_proof_base_u as u64).pow(index as u32)))
                         })
                         .sum::<G1Projective>()
             },
@@ -1622,70 +1622,70 @@ impl ProofRequestPhase {
                         .iter()
                         .map(|v| v.as_ref()),
                 )
-                // .chain(
-                //     to_be_issued_witnesses_binding_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_witnesses_values_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_witnesses_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_witnesses_attributes_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_witnesses_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_witnesses_decomposition_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(to_be_issued_commitments_bytes.iter().map(|v| v.as_ref()))
-                // .chain(to_be_issued_hm_s_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     to_be_issued_binding_number_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_values_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_issued_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_attributes_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(
-                //     to_be_spent_serial_numbers_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // )
-                // .chain(blinded_pay_bytes.iter().map(|v| v.as_ref()))
-                // .chain(
-                //     range_proof_decompositions_commitments_bytes
-                //         .iter()
-                //         .map(|v| v.as_ref()),
-                // ),
+                .chain(
+                    to_be_issued_witnesses_binding_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_witnesses_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_witnesses_decomposition_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(to_be_issued_commitments_bytes.iter().map(|v| v.as_ref()))
+                .chain(to_be_issued_hm_s_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    to_be_issued_binding_number_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_values_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_issued_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_attributes_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(
+                    to_be_spent_serial_numbers_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                )
+                .chain(blinded_pay_bytes.iter().map(|v| v.as_ref()))
+                .chain(
+                    range_proof_decompositions_commitments_bytes
+                        .iter()
+                        .map(|v| v.as_ref()),
+                ),
         );
 
         challenge == self.challenge

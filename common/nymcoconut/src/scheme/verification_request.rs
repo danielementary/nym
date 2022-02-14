@@ -273,7 +273,9 @@ fn scalar_fits_in_u64(value: &Scalar) -> bool {
 }
 
 fn scalar_to_u64(value: &Scalar) -> u64 {
-    assert!(scalar_fits_in_u64(value));
+    if !scalar_fits_in_u64(value) {
+        panic!("value must fit in a u64");
+    }
 
     // keep 8 first bytes ~= 64 first bits for u64
     let mut u64_value_bytes: [u8; 8] = [0; 8];
@@ -890,5 +892,29 @@ mod tests {
         let theta_from_bytes = ThetaRequestPhase::try_from(theta_bytes.as_slice()).unwrap();
 
         assert_eq!(theta_from_bytes, theta);
+    }
+
+    #[test]
+    fn scalar_fits_in_u64_tests() {
+        let zero = Scalar::from(0);
+        let middle_value = Scalar::from(35065);
+        let max = Scalar::from(u64::MAX);
+        let overflow = max + Scalar::from(1);
+
+        assert!(scalar_fits_in_u64(&zero));
+        assert!(scalar_fits_in_u64(&middle_value));
+        assert!(scalar_fits_in_u64(&max));
+        assert!(!scalar_fits_in_u64(&overflow));
+    }
+
+    #[test]
+    fn scalar_to_u64_tests() {
+        let zero = 0;
+        let middle_value = 35065;
+        let max = u64::MAX;
+
+        assert_eq!(scalar_to_u64(&Scalar::from(zero)), zero);
+        assert_eq!(scalar_to_u64(&Scalar::from(middle_value)), middle_value);
+        assert_eq!(scalar_to_u64(&Scalar::from(max)), max);
     }
 }

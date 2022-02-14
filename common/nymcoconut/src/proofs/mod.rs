@@ -609,10 +609,6 @@ impl ProofSpend {
         }
     }
 
-    pub(crate) fn private_attributes_len(&self) -> usize {
-        3
-    }
-
     pub(crate) fn verify(
         &self,
         params: &Parameters,
@@ -980,9 +976,9 @@ impl ProofRequestPhase {
                     .iter()
                     .enumerate()
                     .map(|(index, witness_value_decomposition)| {
-                        params.hs2()[1] * witness_value_decomposition
-                            + params.hs2()[1]
-                                * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                        params.hs2()[1]
+                            * (witness_value_decomposition
+                                * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                     })
                     .sum::<G2Projective>()
             })
@@ -1292,10 +1288,6 @@ impl ProofRequestPhase {
         }
     }
 
-    pub(crate) fn private_attributes_len(&self) -> usize {
-        3
-    }
-
     pub(crate) fn verify(
         &self,
         params: &Parameters,
@@ -1335,9 +1327,9 @@ impl ProofRequestPhase {
                         .iter()
                         .enumerate()
                         .map(|(index, response_value_decomposition)| {
-                            params.hs1()[1] * response_value_decomposition
-                                + params.hs1()[1]
-                                    * (Scalar::from(
+                            params.hs1()[1]
+                                * (response_value_decomposition
+                                    * Scalar::from(
                                         (self.range_proof_base_u as u64).pow(index as u32),
                                     ))
                         })
@@ -1454,9 +1446,9 @@ impl ProofRequestPhase {
                         .iter()
                         .enumerate()
                         .map(|(index, response_value_decomposition)| {
-                            params.hs2()[1] * response_value_decomposition
-                                + params.hs2()[1]
-                                    * (Scalar::from(
+                            params.hs2()[1]
+                                * (response_value_decomposition
+                                    * Scalar::from(
                                         (self.range_proof_base_u as u64).pow(index as u32),
                                     ))
                         })

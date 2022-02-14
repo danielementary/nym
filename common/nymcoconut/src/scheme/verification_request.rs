@@ -523,6 +523,7 @@ pub fn randomise_and_request_vouchers(
     // vouchers
     to_be_spent_signatures: &[Signature],
 ) -> Result<ThetaRequestPhase> {
+    // decompose to be issued values and pick corresponding signatures
     let to_be_issued_values_decompositions: Vec<Vec<Scalar>> = to_be_issued_values
         .iter()
         .map(|value| decompose_value(range_proof_base_u, range_proof_number_of_elements_l, value))
@@ -531,19 +532,21 @@ pub fn randomise_and_request_vouchers(
     let range_proof_decompositions_signatures: Vec<Vec<Signature>> =
         to_be_issued_values_decompositions
             .iter()
-            .map(|range_proof_values_decomposition| {
+            .map(|range_proof_value_decomposition| {
                 pick_signatures_for_decomposition(
                     &range_proof_signatures,
-                    &range_proof_values_decomposition,
+                    &range_proof_value_decomposition,
                 )
             })
             .collect();
 
+    // randomise sigantures
     let (to_be_spent_signatures, to_be_spent_blinders): (Vec<Signature>, Vec<Scalar>) =
         to_be_spent_signatures
             .iter()
-            .map(|v| v.randomise(&params))
+            .map(|to_be_spent_signature| to_be_spent_signature.randomise(&params))
             .unzip();
+
     let (range_proof_decompositions_signatures, range_proof_blinders): (
         Vec<Vec<Signature>>,
         Vec<Vec<Scalar>>,
@@ -559,15 +562,20 @@ pub fn randomise_and_request_vouchers(
         })
         .unzip();
 
+    // pick openings for commitments
     let to_be_issued_commitments_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+
     let to_be_issued_binding_numbers_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+
     let to_be_issued_values_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
+
     let to_be_issued_serial_numbers_openings =
         params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
 
+    // compute commitments
     let to_be_issued_commitments: Vec<G1Projective> = izip!(
         to_be_issued_commitments_openings.iter(),
         to_be_issued_values_decompositions.iter(),
@@ -580,9 +588,9 @@ pub fn randomise_and_request_vouchers(
                 .iter()
                 .enumerate()
                 .map(|(index, value_decomposition)| {
-                    params.hs1()[1] * value_decomposition
-                        + params.hs1()[1]
-                            * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                    params.hs1()[1]
+                        * (value_decomposition
+                            * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                 })
                 .sum::<G1Projective>()
             + params.hs1()[2] * serial_number
@@ -612,8 +620,8 @@ pub fn randomise_and_request_vouchers(
                 .iter()
                 .enumerate()
                 .map(|(index, value_decomposition)| {
-                    hm * value_decomposition
-                        + hm * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                    hm * (value_decomposition
+                        * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                 })
                 .sum::<G1Projective>()
     })
@@ -653,9 +661,9 @@ pub fn randomise_and_request_vouchers(
                 .iter()
                 .enumerate()
                 .map(|(index, value_decomposition)| {
-                    params.hs2()[1] * value_decomposition
-                        + params.hs2()[1]
-                            * (Scalar::from((range_proof_base_u as u64).pow(index as u32)))
+                    params.hs2()[1]
+                        * (value_decomposition
+                            * Scalar::from((range_proof_base_u as u64).pow(index as u32)))
                 })
                 .sum::<G2Projective>()
         })
@@ -731,7 +739,6 @@ pub fn randomise_and_request_vouchers(
 pub fn verify_request_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
-    range_proof_verification_key: &VerificationKey,
     theta: &ThetaRequestPhase,
     infos: &[Scalar],
 ) -> bool {
@@ -919,7 +926,7 @@ mod tests {
 
         let zero = Scalar::from(0);
         let one = Scalar::from(1);
-        let two = Scalar::from(2);
+        // let two = Scalar::from(2);
         let three = Scalar::from(3);
 
         assert_eq!(

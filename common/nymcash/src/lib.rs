@@ -1,11 +1,10 @@
 use bls12_381::{G2Projective, Scalar};
 use itertools::izip;
 use nymcoconut::{
-    aggregate_signature_shares, blind_sign, issue_range_signatures, keygen, prepare_blind_sign,
-    randomise_and_request_vouchers, randomise_and_spend_vouchers, verify_request_vouchers,
-    verify_spent_vouchers, BlindSignRequest, BlindedSignature, KeyPair, Parameters,
-    RangeProofSignatures, Signature, SignatureShare, ThetaRequestPhase, ThetaSpendPhase,
-    VerificationKey,
+    aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_request_vouchers,
+    randomise_and_spend_vouchers, verify_request_vouchers, verify_spent_vouchers, BlindSignRequest,
+    BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature, SignatureShare,
+    ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
 };
 
 // define new types for clarity
@@ -448,7 +447,6 @@ impl ThetaRequestAndInfos {
         if !verify_request_vouchers(
             &coconut_params,
             &validator_key_pair.verification_key(),
-            &range_proof_verification_key,
             &self.theta,
             &infos,
         ) {
@@ -603,7 +601,7 @@ fn aggregate_vouchers_signatures_shares(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nymcoconut::{aggregate_verification_keys, ttp_keygen};
+    use nymcoconut::{aggregate_verification_keys, issue_range_signatures, keygen, ttp_keygen};
 
     #[test]
     fn e2e_spend() {
@@ -835,6 +833,7 @@ mod tests {
         let (blinded_signatures_shares_openings, blinded_signatures_shares_requests) =
             prepare_vouchers_blind_sign(&params.coconut_params, &vouchers);
 
+        // validators
         // issue signatures for initial vouchers partial signatures
         let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =
             validators_key_pairs
@@ -908,6 +907,11 @@ mod tests {
                 &to_be_issued_values,
                 &to_be_spent_values,
             );
+
+        assert_eq!(
+            proof_to_pay_5_and_request_3_and_2.theta.blinded_pay,
+            params.coconut_params.gen2() * pay
+        );
 
         // validators verify proof and issue signatures for new vouchers
         let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =

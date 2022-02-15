@@ -21,8 +21,8 @@ use crate::utils::{hash_g1, try_deserialize_g1_projective, try_deserialize_g2_pr
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ThetaRequestPhase {
     // parameters
-    number_of_to_be_issued_vouchers: u8,
-    number_of_to_be_spent_vouchers: u8,
+    pub number_of_to_be_issued_vouchers: u8,
+    pub number_of_to_be_spent_vouchers: u8,
     range_proof_base_u: u8,
     range_proof_number_of_elements_l: u8,
     // commitments

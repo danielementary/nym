@@ -2,9 +2,9 @@ use bls12_381::{G2Projective, Scalar};
 use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_request_vouchers,
-    randomise_and_spend_vouchers, verify_request_vouchers, verify_spent_vouchers, BlindSignRequest,
-    BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature, SignatureShare,
-    ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
+    randomise_and_spend_vouchers, scalar_to_u64, verify_request_vouchers, verify_spent_vouchers,
+    BlindSignRequest, BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature,
+    SignatureShare, ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
 };
 
 // define new types for clarity
@@ -396,8 +396,9 @@ impl ThetaSpendAndInfos {
         values: &[Scalar],
     ) -> bool {
         let double_spending_tags = &self.theta.blinded_serial_numbers;
+
         // check double spending
-        if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags) {
+        if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags, 1) {
             return false;
         }
 
@@ -410,7 +411,7 @@ impl ThetaSpendAndInfos {
             return false;
         }
 
-        // check vouchers
+        // check proof
         if !verify_spent_vouchers(
             coconut_params,
             validators_verification_key,
@@ -430,14 +431,32 @@ impl ThetaSpendAndInfos {
 impl ThetaRequestAndInfos {
     fn verify(
         &self,
-        coconut_params: &Parameters,
+        params: &ECashParams,
         validator_key_pair: &KeyPair,
-        verification_key: &VerificationKey,
+        validators_verification_key: &VerificationKey,
         range_proof_verification_key: &VerificationKey,
-    ) -> Vec<BlindedSignatureShare> {
-        // TODO
-        // add double spending tag
-        // add check gamma pay
+        bulletin_board: &mut BulletinBoard,
+        number_of_validators: u8,
+        pay: &Scalar,
+    ) -> (bool, Vec<BlindedSignatureShare>) {
+        let double_spending_tags = &self.theta.to_be_spent_serial_numbers_commitments;
+
+        // check double spending
+        if !bulletin_board
+            .check_valid_double_spending_tags(&double_spending_tags, number_of_validators)
+        {
+            return (false, vec![]);
+        }
+
+        // check committed pay
+        if params.coconut_params.hs2()[1] * pay != self.theta.blinded_pay {
+            return (false, vec![]);
+        }
+
+        // check pay is in the valid range
+        if scalar_to_u64(&pay) > scalar_to_u64(&params.pay_max) {
+            return (false, vec![]);
+        }
 
         let infos: Attributes = self
             .to_be_spent_infos
@@ -445,27 +464,34 @@ impl ThetaRequestAndInfos {
             .map(|infos| infos[0])
             .collect();
 
+        // check proof
         if !verify_request_vouchers(
-            &coconut_params,
-            &verification_key,
+            &params.coconut_params,
+            &validators_verification_key,
             &range_proof_verification_key,
             &self.theta,
             &infos,
         ) {
-            panic!("could not verify the vouchers to be spent during request");
+            return (false, vec![]);
         }
 
-        vouchers_blind_sign(
-            &coconut_params,
-            &self.to_be_issued_blinded_signatures_shares_requests,
-            &self.to_be_issued_infos,
-            &validator_key_pair,
+        // add double_spending_tags to bulletin board
+        bulletin_board.add_tags(double_spending_tags);
+
+        (
+            true,
+            vouchers_blind_sign(
+                &params.coconut_params,
+                &self.to_be_issued_blinded_signatures_shares_requests,
+                &self.to_be_issued_infos,
+                &validator_key_pair,
+            ),
         )
     }
 }
 
 struct BulletinBoard {
-    double_spending_tags: Vec<G2Projective>,
+    double_spending_tags: Vec<(G2Projective, u8)>,
 }
 
 impl BulletinBoard {
@@ -475,13 +501,23 @@ impl BulletinBoard {
         }
     }
 
-    fn check_valid_double_spending_tag(&self, tag: &G2Projective) -> bool {
-        !self.double_spending_tags.contains(tag)
+    fn check_valid_double_spending_tag(&self, tag: &G2Projective, threshold: u8) -> bool {
+        for (double_spending_tag, counter) in self.double_spending_tags.iter() {
+            if double_spending_tag == tag {
+                if *counter >= threshold {
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        return true;
     }
 
-    fn check_valid_double_spending_tags(&self, tags: &[G2Projective]) -> bool {
+    fn check_valid_double_spending_tags(&self, tags: &[G2Projective], threshold: u8) -> bool {
         for tag in tags {
-            if !self.check_valid_double_spending_tag(&tag) {
+            if !self.check_valid_double_spending_tag(&tag, threshold) {
                 return false;
             }
         }
@@ -490,7 +526,14 @@ impl BulletinBoard {
     }
 
     fn add_tag(&mut self, tag: &G2Projective) {
-        self.double_spending_tags.push(*tag);
+        for (double_spending_tag, counter) in self.double_spending_tags.iter_mut() {
+            if double_spending_tag == tag {
+                *counter += 1;
+                return;
+            }
+        }
+
+        self.double_spending_tags.push((*tag, 1));
     }
 
     fn add_tags(&mut self, tags: &[G2Projective]) {
@@ -800,7 +843,9 @@ mod tests {
         let mut bulletin_board = BulletinBoard::new();
 
         // generate validators keypairs
-        let validators_key_pairs = ttp_keygen(&params.coconut_params, 2, 3).unwrap();
+        let number_of_validators = 3;
+        let validators_key_pairs =
+            ttp_keygen(&params.coconut_params, 2, number_of_validators as u64).unwrap();
         let validators_verification_keys: Vec<VerificationKey> = validators_key_pairs
             .iter()
             .map(|keypair| keypair.verification_key())
@@ -916,18 +961,21 @@ mod tests {
         );
 
         // validators verify proof and issue signatures for new vouchers
-        let blinded_signatures_shares_per_validator: Vec<BlindedSignatureShares> =
+        let (proof_to_pay_5_and_request_3_and_2_accepted, blinded_signatures_shares_per_validator): (Vec<bool>, Vec<BlindedSignatureShares>) =
             validators_key_pairs
                 .iter()
                 .map(|validator_key_pair| {
                     proof_to_pay_5_and_request_3_and_2.verify(
-                        &params.coconut_params,
+                        &params,
                         &validator_key_pair,
                         &validators_verification_key,
                         &range_proof_verification_key,
+                        &mut bulletin_board,
+                        number_of_validators,
+                        &pay,
                     )
                 })
-                .collect();
+                .unzip();
 
         // transpose shares signed by validators into all share for the same voucher
         let to_be_issued_blinded_signatures_shares = (0..blinded_signatures_shares_per_validator
@@ -943,6 +991,10 @@ mod tests {
                     .collect::<BlindedSignatureShares>()
             })
             .collect::<Vec<BlindedSignatureShares>>();
+
+        for b in proof_to_pay_5_and_request_3_and_2_accepted {
+            assert!(b);
+        }
 
         // user unblinds new vouchers signatures
         let to_be_issued_signatures_shares = unblind_vouchers_signatures_shares(

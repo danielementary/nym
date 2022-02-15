@@ -272,7 +272,7 @@ fn scalar_fits_in_u64(value: &Scalar) -> bool {
     true
 }
 
-fn scalar_to_u64(value: &Scalar) -> u64 {
+pub fn scalar_to_u64(value: &Scalar) -> u64 {
     if !scalar_fits_in_u64(value) {
         panic!("value must fit in a u64");
     }
@@ -603,7 +603,7 @@ pub fn randomise_and_request_vouchers(
         .collect();
 
     let to_be_issued_binding_number_commitments: Vec<G1Projective> = izip!(
-        to_be_issued_serial_numbers_openings.iter(),
+        to_be_issued_binding_numbers_openings.iter(),
         to_be_issued_hm_s.iter()
     )
     .map(|(opening, hm)| params.gen1() * opening + hm * binding_number)

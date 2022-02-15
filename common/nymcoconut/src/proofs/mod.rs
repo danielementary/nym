@@ -914,7 +914,6 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        // TODO debug this value
         let to_be_issued_witnesses_binding_numbers_commitments: Vec<G1Projective> = izip!(
             witnesses_to_be_issued_binding_numbers_openings.iter(),
             to_be_issued_hm_s.iter()
@@ -1340,7 +1339,6 @@ impl ProofRequestPhase {
         )
         .collect();
 
-        // TODO debug this value
         let to_be_issued_witnesses_binding_numbers_commitments: Vec<G1Projective> = izip!(
             to_be_issued_binding_number_commitments.iter(),
             self.responses_to_be_issued_binding_numbers_openings.iter(),

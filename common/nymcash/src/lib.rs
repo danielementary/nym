@@ -129,38 +129,6 @@ impl VouchersAndSignatures {
         }
     }
 
-    fn new(vouchers: &[Voucher], signatures: &[Signature]) -> Self {
-        if vouchers.is_empty() {
-            panic!("vouchers must not be empty")
-        }
-
-        if vouchers.len() != signatures.len() {
-            panic!("vouchers and signatures must have the same length")
-        }
-
-        let binding_number = vouchers[0].binding_number;
-
-        // start with some unspent vouchers
-        let unspent_vouchers = izip!(vouchers.iter(), signatures.iter())
-            .map(|(voucher, signature)| VoucherAndSignature {
-                voucher: *voucher,
-                signature: *signature,
-            })
-            .collect();
-
-        let to_be_spent_vouchers = vec![];
-        let to_be_issued_vouchers = vec![];
-        let spent_vouchers = vec![];
-
-        Self {
-            binding_number,
-            unspent_vouchers,
-            to_be_spent_vouchers,
-            to_be_issued_vouchers,
-            spent_vouchers,
-        }
-    }
-
     // find unspent vouchers and move them to be spend for given values
     fn find(&mut self, values: &[Attribute]) {
         if values.is_empty() {

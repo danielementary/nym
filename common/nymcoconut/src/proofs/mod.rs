@@ -505,7 +505,6 @@ pub struct ProofSpend {
     // responses
     response_binding_number: Scalar,
     responses_values: Vec<Scalar>,
-    responses_serial_numbers: Vec<Scalar>,
     responses_blinders: Vec<Scalar>,
 }
 
@@ -516,48 +515,34 @@ impl ProofSpend {
         number_of_vouchers_spent: u32,
         binding_number: &Scalar,
         values: &[Scalar],
-        serial_numbers: &[Scalar],
         signatures_blinding_factors: &[Scalar],
         blinded_messages_kappa: &[G2Projective],
-        blinded_serial_numbers_zeta: &[G2Projective],
         blinded_sum_c: &G2Projective,
     ) -> Self {
         // create the witnesses
         let witness_binding_number = params.random_scalar();
         let witnesses_values = params.n_random_scalars(values.len());
-        let witnesses_serial_numbers = params.n_random_scalars(serial_numbers.len());
         let witnesses_signatures_blinding_factors =
             params.n_random_scalars(signatures_blinding_factors.len());
 
         // witnesses commitments
         let commitments_kappa: Vec<G2Projective> = izip!(
             witnesses_values.iter(),
-            witnesses_serial_numbers.iter(),
             witnesses_signatures_blinding_factors.iter()
         )
-        .map(|(v, sn, b)| {
+        .map(|(v, b)| {
             verification_key.alpha()
                 + verification_key.beta_g2()[0] * witness_binding_number
                 + verification_key.beta_g2()[1] * v
-                + verification_key.beta_g2()[2] * sn
                 + params.gen2() * b
         })
         .collect();
-
-        let commitments_zeta: Vec<G2Projective> = witnesses_serial_numbers
-            .iter()
-            .map(|sn| params.gen2() * sn)
-            .collect();
 
         let commitment_c: G2Projective = witnesses_values.iter().map(|v| params.gen2() * v).sum();
 
         let blinded_messages_kappa_bytes: Vec<_> = blinded_messages_kappa
             .iter()
             .map(|bmk| bmk.to_bytes())
-            .collect();
-        let blinded_serial_numbers_zeta_bytes: Vec<_> = blinded_serial_numbers_zeta
-            .iter()
-            .map(|bsnz| bsnz.to_bytes())
             .collect();
 
         let betas_g2_bytes: Vec<_> = verification_key
@@ -568,14 +553,11 @@ impl ProofSpend {
 
         let commitments_kappa_bytes: Vec<_> =
             commitments_kappa.iter().map(|ck| ck.to_bytes()).collect();
-        let commitments_zeta_bytes: Vec<_> =
-            commitments_zeta.iter().map(|cz| cz.to_bytes()).collect();
 
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
             blinded_messages_kappa_bytes
                 .iter()
                 .map(|b| b.as_ref())
-                .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
                 .chain(std::iter::once(blinded_sum_c.to_bytes().as_ref()))
                 .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
                 .chain(std::iter::once(
@@ -583,7 +565,6 @@ impl ProofSpend {
                 ))
                 .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
-                .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
                 .chain(std::iter::once(commitment_c.to_bytes().as_ref())),
         );
 
@@ -591,8 +572,6 @@ impl ProofSpend {
         let response_binding_number =
             produce_response(&witness_binding_number, &challenge, &binding_number);
         let responses_values = produce_responses(&witnesses_values, &challenge, &values);
-        let responses_serial_numbers =
-            produce_responses(&witnesses_serial_numbers, &challenge, &serial_numbers);
         let responses_blinders = produce_responses(
             &witnesses_signatures_blinding_factors,
             &challenge,
@@ -604,7 +583,6 @@ impl ProofSpend {
             challenge,
             response_binding_number,
             responses_values,
-            responses_serial_numbers,
             responses_blinders,
         }
     }
@@ -614,7 +592,6 @@ impl ProofSpend {
         params: &Parameters,
         verification_key: &VerificationKey,
         blinded_messages_kappa: &[G2Projective],
-        blinded_serial_numbers_zeta: &[G2Projective],
         blinded_sum_c: &G2Projective,
     ) -> bool {
         // re-compute witnesses commitments
@@ -622,25 +599,15 @@ impl ProofSpend {
         let commitments_kappa: Vec<_> = izip!(
             blinded_messages_kappa.iter(),
             self.responses_values.iter(),
-            self.responses_serial_numbers.iter(),
             self.responses_blinders.iter(),
         )
-        .map(|(k, v, sn, b)| {
+        .map(|(k, v, b)| {
             k * self.challenge
                 + verification_key.alpha() * (Scalar::one() - self.challenge)
                 + verification_key.beta_g2()[0] * self.response_binding_number
                 + verification_key.beta_g2()[1] * v
-                + verification_key.beta_g2()[2] * sn
                 + params.gen2() * b
         })
-        .collect();
-
-        // zeta is the public value associated with the serial number
-        let commitments_zeta: Vec<_> = izip!(
-            blinded_serial_numbers_zeta.iter(),
-            self.responses_serial_numbers.iter()
-        )
-        .map(|(z, sn)| z * self.challenge + params.gen2() * sn)
         .collect();
 
         let commitment_c = blinded_sum_c * self.challenge
@@ -654,10 +621,6 @@ impl ProofSpend {
             .iter()
             .map(|bmk| bmk.to_bytes())
             .collect();
-        let blinded_serial_numbers_zeta_bytes: Vec<_> = blinded_serial_numbers_zeta
-            .iter()
-            .map(|bsnz| bsnz.to_bytes())
-            .collect();
 
         let betas_g2_bytes: Vec<_> = verification_key
             .beta_g2()
@@ -668,14 +631,11 @@ impl ProofSpend {
         // compute the challenge
         let commitments_kappa_bytes: Vec<_> =
             commitments_kappa.iter().map(|ck| ck.to_bytes()).collect();
-        let commitments_zeta_bytes: Vec<_> =
-            commitments_zeta.iter().map(|cz| cz.to_bytes()).collect();
 
         let challenge = compute_challenge::<ChallengeDigest, _, _>(
             blinded_messages_kappa_bytes
                 .iter()
                 .map(|b| b.as_ref())
-                .chain(blinded_serial_numbers_zeta_bytes.iter().map(|b| b.as_ref()))
                 .chain(std::iter::once(blinded_sum_c.to_bytes().as_ref()))
                 .chain(std::iter::once(params.gen2().to_bytes().as_ref()))
                 .chain(std::iter::once(
@@ -683,7 +643,6 @@ impl ProofSpend {
                 ))
                 .chain(betas_g2_bytes.iter().map(|b| b.as_ref()))
                 .chain(commitments_kappa_bytes.iter().map(|b| b.as_ref()))
-                .chain(commitments_zeta_bytes.iter().map(|b| b.as_ref()))
                 .chain(std::iter::once(commitment_c.to_bytes().as_ref())),
         );
 
@@ -702,12 +661,6 @@ impl ProofSpend {
             .map(|v| v.to_bytes())
             .flatten()
             .collect::<Vec<u8>>();
-        let responses_serial_numbers_bytes = self
-            .responses_serial_numbers
-            .iter()
-            .map(|sn| sn.to_bytes())
-            .flatten()
-            .collect::<Vec<u8>>();
         let responses_blinders_bytes = self
             .responses_blinders
             .iter()
@@ -719,7 +672,6 @@ impl ProofSpend {
         bytes.extend_from_slice(&self.challenge.to_bytes());
         bytes.extend_from_slice(&self.response_binding_number.to_bytes());
         bytes.extend(responses_values_bytes);
-        bytes.extend(responses_serial_numbers_bytes);
         bytes.extend(responses_blinders_bytes);
 
         bytes
@@ -727,13 +679,13 @@ impl ProofSpend {
 
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // at the very minimum there must be a single attribute being proven
-        if bytes.len() < 32 * 5 + 4 || (bytes.len() - 4) % 32 != 0 {
+        if bytes.len() < 32 * 4 + 4 || (bytes.len() - 4) % 32 != 0 {
             return Err(CoconutError::DeserializationInvalidLength {
                 actual: bytes.len(),
                 modulus_target: bytes.len(),
                 modulus: 32,
-                object: "kappa and zeta and C".to_string(),
-                target: 32 * 5,
+                object: "kappa and C".to_string(),
+                target: 32 * 4,
             });
         }
 
@@ -770,17 +722,6 @@ impl ProofSpend {
 
         p = p_prime;
         p_prime += 32 * number_of_vouchers_spent as usize;
-        let responses_serial_numbers_bytes = &bytes[p..p_prime];
-        let responses_serial_numbers = try_deserialize_scalar_vec(
-            number_of_vouchers_spent as u64,
-            &responses_serial_numbers_bytes,
-            CoconutError::Deserialization(
-                "failed to deserialize the responses serial numbers".to_string(),
-            ),
-        )?;
-
-        p = p_prime;
-        p_prime += 32 * number_of_vouchers_spent as usize;
         let responses_blinders_bytes = &bytes[p..p_prime];
         let responses_blinders = try_deserialize_scalar_vec(
             number_of_vouchers_spent as u64,
@@ -795,7 +736,6 @@ impl ProofSpend {
             challenge,
             response_binding_number,
             responses_values,
-            responses_serial_numbers,
             responses_blinders,
         })
     }
@@ -2108,10 +2048,8 @@ mod tests {
         let number_of_vouchers_spent = 1;
         let binding_number = params.random_scalar();
         let values = [Scalar::from(10)];
-        let serial_numbers = params.n_random_scalars(1);
         let signatures_blinding_factors = params.n_random_scalars(1);
         let blinded_messages_kappa = [params.gen2() * params.random_scalar()];
-        let blinded_serial_numbers_zeta = [params.gen2() * params.random_scalar()];
         let blinded_sum_c = params.gen2() * params.random_scalar();
 
         let pi_v = ProofSpend::construct(
@@ -2120,10 +2058,8 @@ mod tests {
             number_of_vouchers_spent,
             &binding_number,
             &values,
-            &serial_numbers,
             &signatures_blinding_factors,
             &blinded_messages_kappa,
-            &blinded_serial_numbers_zeta,
             &blinded_sum_c,
         );
 
@@ -2136,14 +2072,8 @@ mod tests {
         let number_of_vouchers_spent = 3;
         let binding_number = params.random_scalar();
         let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-        let serial_numbers = params.n_random_scalars(3);
         let signatures_blinding_factors = params.n_random_scalars(3);
         let blinded_messages_kappa = [
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-        ];
-        let blinded_serial_numbers_zeta = [
             params.gen2() * params.random_scalar(),
             params.gen2() * params.random_scalar(),
             params.gen2() * params.random_scalar(),
@@ -2156,10 +2086,8 @@ mod tests {
             number_of_vouchers_spent,
             &binding_number,
             &values,
-            &serial_numbers,
             &signatures_blinding_factors,
             &blinded_messages_kappa,
-            &blinded_serial_numbers_zeta,
             &blinded_sum_c,
         );
 

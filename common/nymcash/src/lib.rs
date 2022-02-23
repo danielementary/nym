@@ -106,6 +106,7 @@ struct VouchersAndSignatures {
 // used to return a proof theta and the corresponding (public) infos to verify it
 struct ThetaSpendAndInfos {
     theta: ThetaSpendPhase,
+    serial_numbers: Attributes,
     infos: Attributes,
 }
 
@@ -354,12 +355,15 @@ impl VouchersAndSignatures {
             validator_verification_key,
             &binding_number,
             &values,
-            &serial_numbers,
             &signatures,
         )
         .unwrap();
 
-        ThetaSpendAndInfos { theta, infos }
+        ThetaSpendAndInfos {
+            theta,
+            serial_numbers,
+            infos,
+        }
     }
 
     // transpose signatures shares signed by validators
@@ -367,6 +371,7 @@ impl VouchersAndSignatures {
     fn transpose_unblind_aggregate_and_store_new_vouchers(
         &mut self,
         coconut_params: &Parameters,
+        threshold_of_validators: usize,
         blinded_signatures_shares_per_validator: &[BlindedSignatureShares],
         blinded_signatures_shares_openings: &[Openings],
         blinded_signatures_shares_requests: &[BlindSignRequest],
@@ -374,7 +379,7 @@ impl VouchersAndSignatures {
         validators_verification_key: &VerificationKey,
     ) {
         let blinded_signatures_shares = transpose_shares_per_validators_into_shares_per_vouchers(
-            &blinded_signatures_shares_per_validator,
+            &blinded_signatures_shares_per_validator[..threshold_of_validators],
         );
 
         let signatures_shares = unblind_vouchers_signatures_shares(
@@ -383,7 +388,7 @@ impl VouchersAndSignatures {
             &self.to_be_issued_vouchers,
             &blinded_signatures_shares_openings,
             &blinded_signatures_shares_requests,
-            &validators_verification_keys,
+            &validators_verification_keys[..threshold_of_validators],
         );
 
         let signatures = aggregate_vouchers_signatures_shares(
@@ -408,7 +413,11 @@ impl ThetaSpendAndInfos {
         number_of_validators: u8,
         values: &[Scalar],
     ) -> bool {
-        let double_spending_tags = &self.theta.blinded_serial_numbers;
+        let double_spending_tags = &self
+            .serial_numbers
+            .iter()
+            .map(|sn| coconut_params.gen2() * sn)
+            .collect();
 
         // check double spending
         if !bulletin_board.check_valid_double_spending_tags(&double_spending_tags, 1) {
@@ -429,6 +438,7 @@ impl ThetaSpendAndInfos {
             coconut_params,
             validators_verification_key,
             &self.theta,
+            &self.serial_numbers,
             &self.infos,
         ) {
             return false;
@@ -533,7 +543,7 @@ impl BulletinBoard {
         return true;
     }
 
-    fn check_valid_double_spending_tags(&self, tags: &[G2Projective], threshold: u8) -> bool {
+    fn check_valid_double_spending_tags(&self, tags: &Vec<G2Projective>, threshold: u8) -> bool {
         for tag in tags {
             if !self.check_valid_double_spending_tag(&tag, threshold) {
                 return false;
@@ -554,7 +564,7 @@ impl BulletinBoard {
         self.double_spending_tags.push((*tag, increment));
     }
 
-    fn add_tags(&mut self, tags: &[G2Projective], increment: u8) {
+    fn add_tags(&mut self, tags: &Vec<G2Projective>, increment: u8) {
         for tag in tags {
             self.add_tag(tag, increment);
         }
@@ -698,15 +708,23 @@ mod tests {
         let mut bulletin_board = BulletinBoard::new();
 
         // generate validators keypairs
-        let number_of_validators = 3;
-        let validators_key_pairs =
-            ttp_keygen(&params.coconut_params, 2, number_of_validators as u64).unwrap();
+        let number_of_validators = 10;
+        let threshold_of_validators = 7;
+        let validators_key_pairs = ttp_keygen(
+            &params.coconut_params,
+            threshold_of_validators as u64,
+            number_of_validators as u64,
+        )
+        .unwrap();
         let validators_verification_keys: Vec<VerificationKey> = validators_key_pairs
             .iter()
             .map(|keypair| keypair.verification_key())
             .collect();
-        let validators_verification_key =
-            aggregate_verification_keys(&validators_verification_keys, Some(&[1, 2, 3])).unwrap();
+        let validators_verification_key = aggregate_verification_keys(
+            &validators_verification_keys,
+            Some(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        )
+        .unwrap();
 
         // generate range proof signatures
         let range_proof_keypair = keygen(&params.coconut_params);
@@ -782,6 +800,7 @@ mod tests {
 
         vouchers_and_signatures.transpose_unblind_aggregate_and_store_new_vouchers(
             &params.coconut_params,
+            threshold_of_validators,
             &blinded_signatures_shares_per_validator_1,
             &openings_1,
             &request_1.to_be_issued_blinded_signatures_shares_requests,
@@ -854,6 +873,7 @@ mod tests {
 
         vouchers_and_signatures.transpose_unblind_aggregate_and_store_new_vouchers(
             &params.coconut_params,
+            threshold_of_validators,
             &blinded_signatures_shares_per_validator_2,
             &openings_2,
             &request_2.to_be_issued_blinded_signatures_shares_requests,

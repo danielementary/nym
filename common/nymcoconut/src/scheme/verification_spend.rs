@@ -12,7 +12,7 @@ use crate::error::{CoconutError, Result};
 use crate::proofs::ProofSpend;
 use crate::scheme::check_bilinear_pairing;
 use crate::scheme::setup::Parameters;
-use crate::scheme::verification::{compute_kappa, compute_zeta};
+use crate::scheme::verification::compute_kappa;
 use crate::scheme::{Signature, VerificationKey};
 use crate::traits::{Base58, Bytable};
 use crate::utils::try_deserialize_g2_projective;
@@ -23,8 +23,6 @@ pub struct ThetaSpendPhase {
     pub number_of_vouchers_spent: u32,
     // blinded messages (kappas)
     pub blinded_messages: Vec<G2Projective>,
-    // blinded serial numbers (zetas)
-    pub blinded_serial_numbers: Vec<G2Projective>,
     // total amount spent
     pub blinded_spent_amount: G2Projective,
     // sigma
@@ -37,11 +35,11 @@ impl TryFrom<&[u8]> for ThetaSpendPhase {
     type Error = CoconutError;
 
     fn try_from(bytes: &[u8]) -> Result<ThetaSpendPhase> {
-        // 4 + 96 + 96 + 96 + 96 + ? >= 388
-        if bytes.len() < 388 {
+        // 4 + 96 + 96 + 96 + ? >= 292
+        if bytes.len() < 292 {
             return Err(
                 CoconutError::Deserialization(
-                    format!("Tried to deserialize ThetaSpendPhase with insufficient number of bytes, expected >= 388, got {}", bytes.len()),
+                    format!("Tried to deserialize ThetaSpendPhase with insufficient number of bytes, expected >= 292, got {}", bytes.len()),
                 ));
         }
 
@@ -64,23 +62,6 @@ impl TryFrom<&[u8]> for ThetaSpendPhase {
             )?;
 
             blinded_messages.push(blinded_message);
-        }
-
-        let mut blinded_serial_numbers = Vec::with_capacity(number_of_vouchers_spent as usize);
-        for i in 0..number_of_vouchers_spent {
-            p = p_prime;
-            p_prime += 96;
-
-            let blinded_serial_number_bytes = bytes[p..p_prime].try_into().unwrap();
-            let blinded_serial_number = try_deserialize_g2_projective(
-                &blinded_serial_number_bytes,
-                CoconutError::Deserialization(format!(
-                    "failed to deserialize the blinded serial number (zeta) at index {}",
-                    i
-                )),
-            )?;
-
-            blinded_serial_numbers.push(blinded_serial_number);
         }
 
         p = p_prime;
@@ -107,7 +88,6 @@ impl TryFrom<&[u8]> for ThetaSpendPhase {
         Ok(ThetaSpendPhase {
             number_of_vouchers_spent,
             blinded_messages,
-            blinded_serial_numbers,
             blinded_spent_amount,
             vouchers_signatures,
             pi_v,
@@ -121,24 +101,17 @@ impl ThetaSpendPhase {
             params,
             verification_key,
             &self.blinded_messages,
-            &self.blinded_serial_numbers,
             &self.blinded_spent_amount,
         )
     }
 
-    // number of vouchers spent || blinded messages (kappa) || blinded serial numbers (zeta) || vouchers signatures || total amount || pi_v
+    // number of vouchers spent || blinded messages (kappa) ||  vouchers signatures || total amount || pi_v
     pub fn to_bytes(&self) -> Vec<u8> {
         let number_of_vouchers_spent_bytes = self.number_of_vouchers_spent.to_be_bytes();
         let blinded_message_bytes = self
             .blinded_messages
             .iter()
             .map(|m| m.to_affine().to_compressed())
-            .flatten()
-            .collect::<Vec<u8>>();
-        let blinded_serial_number_bytes = self
-            .blinded_serial_numbers
-            .iter()
-            .map(|sn| sn.to_affine().to_compressed())
             .flatten()
             .collect::<Vec<u8>>();
         let blinded_spent_amount_bytes = self.blinded_spent_amount.to_affine().to_compressed();
@@ -151,12 +124,11 @@ impl ThetaSpendPhase {
         let pi_v_bytes = self.pi_v.to_bytes();
 
         let mut bytes = Vec::with_capacity(
-            4 + self.number_of_vouchers_spent as usize * (96 + 96 + 96) + 96 + pi_v_bytes.len(),
+            4 + self.number_of_vouchers_spent as usize * (96 + 96) + 96 + pi_v_bytes.len(),
         );
 
         bytes.extend(number_of_vouchers_spent_bytes);
         bytes.extend(blinded_message_bytes);
-        bytes.extend(blinded_serial_number_bytes);
         bytes.extend(blinded_spent_amount_bytes);
         bytes.extend(vouchers_signatures_bytes);
         bytes.extend(pi_v_bytes);
@@ -186,7 +158,6 @@ pub fn randomise_and_spend_vouchers(
     verification_key: &VerificationKey,
     binding_number: &Scalar,
     values: &[Scalar],
-    serial_numbers: &[Scalar],
     signatures: &[Signature],
 ) -> Result<ThetaSpendPhase> {
     if verification_key.beta_g2.len() < 3 {
@@ -201,28 +172,11 @@ pub fn randomise_and_spend_vouchers(
     let (signatures_prime, signatures_blinding_factors): (Vec<Signature>, Vec<Scalar>) =
         signatures.iter().map(|s| s.randomise(&params)).unzip();
 
-    // blinded_message : kappa in the paper.
-    // Value kappa is needed since we want to show a signature sigma'.
-    // In order to verify sigma' we need both the verification key vk and the message m.
-    // However, we do not want to reveal m to whomever we are showing the signature.
-    // Thus, we need kappa which allows us to verify sigma'. In particular,
-    // kappa is computed on m as input, but thanks to the use or random value r,
-    // it does not reveal any information about m.
-    let blinded_messages: Vec<_> = izip!(
-        values.iter(),
-        serial_numbers.iter(),
-        signatures_blinding_factors.iter()
-    )
-    .map(|(v, sn, sbf)| {
-        let private_attributes = vec![*binding_number, *v, *sn];
-        compute_kappa(&params, &verification_key, &private_attributes, *sbf)
-    })
-    .collect();
-
-    // zeta is a commitment to the serial number (i.e., a public value associated with the serial number)
-    let blinded_serial_numbers: Vec<_> = serial_numbers
-        .iter()
-        .map(|sn| compute_zeta(&params, *sn))
+    let blinded_messages: Vec<_> = izip!(values.iter(), signatures_blinding_factors.iter())
+        .map(|(v, sbf)| {
+            let private_attributes = vec![*binding_number, *v];
+            compute_kappa(&params, &verification_key, &private_attributes, *sbf)
+        })
         .collect();
 
     let blinded_spent_amount = values.iter().map(|v| params.gen2() * v).sum();
@@ -234,17 +188,14 @@ pub fn randomise_and_spend_vouchers(
         number_of_vouchers_spent,
         &binding_number,
         &values,
-        &serial_numbers,
         &signatures_blinding_factors,
         &blinded_messages,
-        &blinded_serial_numbers,
         &blinded_spent_amount,
     );
 
     Ok(ThetaSpendPhase {
         number_of_vouchers_spent,
         blinded_messages,
-        blinded_serial_numbers,
         blinded_spent_amount,
         vouchers_signatures: signatures_prime,
         pi_v,
@@ -255,6 +206,7 @@ pub fn verify_spent_vouchers(
     params: &Parameters,
     verification_key: &VerificationKey,
     theta: &ThetaSpendPhase,
+    serial_numbers: &[Scalar],
     infos: &[Scalar],
 ) -> bool {
     if verification_key.beta_g2.len() < 4 {
@@ -265,12 +217,13 @@ pub fn verify_spent_vouchers(
         return false;
     }
 
-    let blinded_messages: Vec<_> = theta
-        .blinded_messages
-        .iter()
-        .zip(infos.iter())
-        .map(|(bm, i)| bm + verification_key.beta_g2()[3] * i)
-        .collect();
+    let blinded_messages: Vec<_> = izip!(
+        theta.blinded_messages.iter(),
+        serial_numbers.iter(),
+        infos.iter()
+    )
+    .map(|(bm, sn, i)| bm + verification_key.beta_g2()[2] * sn + verification_key.beta_g2()[3] * i)
+    .collect();
 
     for (vs, bm) in izip!(theta.vouchers_signatures.iter(), blinded_messages.iter()) {
         if !check_bilinear_pairing(
@@ -308,7 +261,6 @@ mod tests {
 
         // test one voucher
         let values = [Scalar::from(10)];
-        let serial_numbers = [params.random_scalar()];
         let signatures = [Signature(
             params.gen1() * params.random_scalar(),
             params.gen1() * params.random_scalar(),
@@ -319,7 +271,6 @@ mod tests {
             &verification_key,
             &binding_number,
             &values,
-            &serial_numbers,
             &signatures,
         )
         .unwrap();
@@ -329,11 +280,6 @@ mod tests {
 
         // test three vouchers
         let values = [Scalar::from(10), Scalar::from(10), Scalar::from(10)];
-        let serial_numbers = [
-            params.random_scalar(),
-            params.random_scalar(),
-            params.random_scalar(),
-        ];
         let signatures = [
             Signature(
                 params.gen1() * params.random_scalar(),
@@ -354,7 +300,6 @@ mod tests {
             &verification_key,
             &binding_number,
             &values,
-            &serial_numbers,
             &signatures,
         )
         .unwrap();

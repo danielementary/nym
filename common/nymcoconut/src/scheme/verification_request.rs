@@ -491,7 +491,7 @@ pub fn randomise_and_request_vouchers(
     to_be_spent_values: &[Scalar],
     // vouchers
     to_be_spent_signatures: &[Signature],
-) -> Result<ThetaRequestPhase> {
+) -> Result<(ThetaRequestPhase, (Vec<Scalar>, Vec<Scalar>, Vec<Scalar>))> {
     // decompose to be issued values and pick corresponding signatures
     let to_be_issued_values_decompositions: Vec<Vec<Scalar>> = to_be_issued_values
         .iter()
@@ -675,22 +675,29 @@ pub fn randomise_and_request_vouchers(
         &range_proof_decompositions_commitments,
     );
 
-    Ok(ThetaRequestPhase {
-        number_of_to_be_issued_vouchers,
-        number_of_to_be_spent_vouchers,
-        range_proof_base_u,
-        range_proof_number_of_elements_l,
-        to_be_issued_commitments,
-        to_be_issued_binding_number_commitments,
-        to_be_issued_values_commitments,
-        to_be_issued_serial_numbers_commitments,
-        to_be_spent_attributes_commitments,
-        blinded_pay,
-        range_proof_decompositions_commitments,
-        to_be_spent_signatures,
-        range_proof_decompositions_signatures,
-        proof,
-    })
+    Ok((
+        ThetaRequestPhase {
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            to_be_issued_commitments,
+            to_be_issued_binding_number_commitments,
+            to_be_issued_values_commitments,
+            to_be_issued_serial_numbers_commitments,
+            to_be_spent_attributes_commitments,
+            blinded_pay,
+            range_proof_decompositions_commitments,
+            to_be_spent_signatures,
+            range_proof_decompositions_signatures,
+            proof,
+        },
+        (
+            to_be_issued_binding_numbers_openings,
+            to_be_issued_values_openings,
+            to_be_issued_serial_numbers_openings,
+        ),
+    ))
 }
 
 pub fn verify_request_vouchers(

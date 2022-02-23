@@ -1,7 +1,7 @@
 use bls12_381::{G2Projective, Scalar};
 use itertools::izip;
 use nymcoconut::{
-    aggregate_signature_shares, blind_sign, prepare_blind_sign, randomise_and_request_vouchers,
+    aggregate_signature_shares, blind_sign, randomise_and_request_vouchers,
     randomise_and_spend_vouchers, scalar_to_u64, verify_request_vouchers, verify_spent_vouchers,
     BlindSignRequest, BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature,
     SignatureShare, ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
@@ -114,8 +114,7 @@ struct ThetaSpendAndInfos {
 // as well as the requests to get the to_be_issued_vouchers signed
 struct ThetaRequestAndInfos {
     theta: ThetaRequestPhase,
-    to_be_issued_blinded_signatures_shares_requests: Vec<BlindSignRequest>,
-    to_be_issued_infos: Vec<Attributes>,
+    to_be_issued_infos: Attributes,
     to_be_spent_serial_numbers: Attributes,
     to_be_spent_infos: Attributes,
 }
@@ -212,7 +211,7 @@ impl VouchersAndSignatures {
         range_proof_signatures: &RangeProofSignatures,
         to_be_issued_values: &[Scalar],
         to_be_spent_values: &[Scalar],
-    ) -> (ThetaRequestAndInfos, Vec<Openings>) {
+    ) -> (ThetaRequestAndInfos, (Openings, Openings, Openings)) {
         if !self.to_be_issued_vouchers.is_empty() {
             panic!("to_be_issued_vouchers must be empty");
         }
@@ -237,21 +236,15 @@ impl VouchersAndSignatures {
         let to_be_issued_vouchers =
             Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
 
-        // prepare blind signatures for new vouchers
-        let (
-            to_be_issued_blinded_signatures_shares_openings,
-            to_be_issued_blinded_signatures_shares_requests,
-        ) = prepare_vouchers_blind_sign(&coconut_params, &to_be_issued_vouchers);
-
         // prepare to be issued vouchers attributes
         let to_be_issued_serial_numbers: Attributes = to_be_issued_vouchers
             .iter()
             .map(|voucher| voucher.serial_number)
             .collect();
 
-        let to_be_issued_infos: Vec<Attributes> = to_be_issued_vouchers
+        let to_be_issued_infos: Attributes = to_be_issued_vouchers
             .iter()
-            .map(|voucher| voucher.public_attributes())
+            .map(|voucher| voucher.info)
             .collect();
 
         // prepare to be spent vouchers attributes and signatures
@@ -274,7 +267,14 @@ impl VouchersAndSignatures {
             .collect();
 
         // prepare proof
-        let theta = randomise_and_request_vouchers(
+        let (
+            theta,
+            (
+                to_be_issued_binding_numbers_openings,
+                to_be_issued_values_openings,
+                to_be_issued_serial_numbers_openings,
+            ),
+        ) = randomise_and_request_vouchers(
             &coconut_params,
             &validators_verification_key,
             &range_proof_verification_key,
@@ -299,12 +299,15 @@ impl VouchersAndSignatures {
         (
             ThetaRequestAndInfos {
                 theta,
-                to_be_issued_blinded_signatures_shares_requests,
                 to_be_issued_infos,
                 to_be_spent_serial_numbers,
                 to_be_spent_infos,
             },
-            to_be_issued_blinded_signatures_shares_openings,
+            (
+                to_be_issued_binding_numbers_openings,
+                to_be_issued_values_openings,
+                to_be_issued_serial_numbers_openings,
+            ),
         )
     }
 
@@ -510,7 +513,7 @@ impl ThetaRequestAndInfos {
             true,
             vouchers_blind_sign(
                 &params.coconut_params,
-                &self.to_be_issued_blinded_signatures_shares_requests,
+                &self.theta,
                 &self.to_be_issued_infos,
                 &validator_key_pair,
             ),
@@ -571,23 +574,23 @@ impl BulletinBoard {
     }
 }
 
-// returns a tuple with blind signatures requests and corresponding openings
-fn prepare_vouchers_blind_sign(
-    params: &Parameters,
-    vouchers: &[Voucher],
-) -> (Vec<Openings>, Vec<BlindSignRequest>) {
-    vouchers
-        .iter()
-        .map(|voucher| {
-            prepare_blind_sign(
-                &params,
-                &voucher.private_attributes(),
-                &voucher.public_attributes(),
-            )
-            .unwrap()
-        })
-        .unzip()
-}
+// // returns a tuple with blind signatures requests and corresponding openings
+// fn prepare_vouchers_blind_sign(
+//     params: &Parameters,
+//     vouchers: &[Voucher],
+// ) -> (Vec<Openings>, Vec<BlindSignRequest>) {
+//     vouchers
+//         .iter()
+//         .map(|voucher| {
+//             prepare_blind_sign(
+//                 &params,
+//                 &voucher.private_attributes(),
+//                 &voucher.public_attributes(),
+//             )
+//             .unwrap()
+//         })
+//         .unzip()
+// }
 
 // returns the list of blinded signatures shares
 fn vouchers_blind_sign(

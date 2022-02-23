@@ -116,7 +116,8 @@ struct ThetaRequestAndInfos {
     theta: ThetaRequestPhase,
     to_be_issued_blinded_signatures_shares_requests: Vec<BlindSignRequest>,
     to_be_issued_infos: Vec<Attributes>,
-    to_be_spent_infos: Vec<Attributes>,
+    to_be_spent_serial_numbers: Attributes,
+    to_be_spent_infos: Attributes,
 }
 
 impl VouchersAndSignatures {
@@ -260,10 +261,10 @@ impl VouchersAndSignatures {
             .map(|voucher_and_signature| voucher_and_signature.voucher.serial_number)
             .collect();
 
-        let to_be_spent_infos: Vec<Attributes> = self
+        let to_be_spent_infos: Attributes = self
             .to_be_spent_vouchers
             .iter()
-            .map(|voucher_and_signature| voucher_and_signature.voucher.public_attributes())
+            .map(|voucher_and_signature| voucher_and_signature.voucher.info)
             .collect();
 
         let to_be_spent_signatures: Vec<Signature> = self
@@ -286,7 +287,6 @@ impl VouchersAndSignatures {
             &to_be_issued_values,
             &to_be_issued_serial_numbers,
             &to_be_spent_values,
-            &to_be_spent_serial_numbers,
             &to_be_spent_signatures,
         )
         .unwrap();
@@ -301,6 +301,7 @@ impl VouchersAndSignatures {
                 theta,
                 to_be_issued_blinded_signatures_shares_requests,
                 to_be_issued_infos,
+                to_be_spent_serial_numbers,
                 to_be_spent_infos,
             },
             to_be_issued_blinded_signatures_shares_openings,
@@ -462,7 +463,11 @@ impl ThetaRequestAndInfos {
         number_of_validators: u8,
         pay: &Scalar,
     ) -> (bool, Vec<BlindedSignatureShare>) {
-        let double_spending_tags = &self.theta.to_be_spent_serial_numbers_commitments;
+        let double_spending_tags = &self
+            .to_be_spent_serial_numbers
+            .iter()
+            .map(|sn| params.coconut_params.gen2() * sn)
+            .collect();
 
         // check double spending
         if !bulletin_board
@@ -486,19 +491,14 @@ impl ThetaRequestAndInfos {
             return (false, vec![]);
         }
 
-        let infos: Attributes = self
-            .to_be_spent_infos
-            .iter()
-            .map(|infos| infos[0])
-            .collect();
-
         // check proof
         if !verify_request_vouchers(
             &params.coconut_params,
             &validators_verification_key,
             &range_proof_verification_key,
             &self.theta,
-            &infos,
+            &self.to_be_spent_serial_numbers,
+            &self.to_be_spent_infos,
         ) {
             return (false, vec![]);
         }

@@ -761,7 +761,6 @@ pub struct ProofRequestPhase {
     responses_to_be_issued_serial_numbers_openings: Vec<Scalar>,
     // to be spent
     responses_to_be_spent_values: Vec<Scalar>,
-    responses_to_be_spent_serial_numbers: Vec<Scalar>,
     responses_to_be_spent_blinders: Vec<Scalar>,
     // range proof
     responses_range_proof_blinders: Vec<Vec<Scalar>>,
@@ -787,7 +786,6 @@ impl ProofRequestPhase {
         to_be_issued_serial_numbers_openings: &[Scalar],
         // to be spent
         to_be_spent_values: &[Scalar],
-        to_be_spent_serial_numbers: &[Scalar],
         to_be_spent_blinders: &[Scalar],
         // range proof
         range_proof_blinders: &[Vec<Scalar>],
@@ -797,7 +795,6 @@ impl ProofRequestPhase {
         to_be_issued_values_commitments: &[G1Projective],
         to_be_issued_serial_numbers_commitments: &[G1Projective],
         to_be_spent_attributes_commitments: &[G2Projective],
-        to_be_spent_serial_numbers_commitments: &[G2Projective],
         blinded_pay: &G2Projective,
         range_proof_decompositions_commitments: &[Vec<G2Projective>],
     ) -> Self {
@@ -823,8 +820,6 @@ impl ProofRequestPhase {
         let witnesses_to_be_issued_serial_numbers_openings =
             params.n_random_scalars(to_be_issued_serial_numbers_openings.len());
         let witnesses_to_be_spent_values = params.n_random_scalars(to_be_spent_values.len());
-        let witnesses_to_be_spent_serial_numbers =
-            params.n_random_scalars(to_be_spent_serial_numbers.len());
         let witnesses_to_be_spent_blinders = params.n_random_scalars(to_be_spent_blinders.len());
         let witnesses_range_proof_blinders: Vec<Vec<Scalar>> = (0..number_of_to_be_issued_vouchers)
             .map(|_| params.n_random_scalars(range_proof_number_of_elements_l as usize))
@@ -891,23 +886,15 @@ impl ProofRequestPhase {
 
         let to_be_spent_witnesses_attributes_commitments: Vec<G2Projective> = izip!(
             witnesses_to_be_spent_values.iter(),
-            witnesses_to_be_spent_serial_numbers.iter(),
             witnesses_to_be_spent_blinders.iter()
         )
-        .map(|(witness_value, witness_serial_number, witness_blinder)| {
+        .map(|(witness_value, witness_blinder)| {
             verification_key.alpha()
                 + verification_key.beta_g2()[0] * witness_binding_number
                 + verification_key.beta_g2()[1] * witness_value
-                + verification_key.beta_g2()[2] * witness_serial_number
                 + params.gen2() * witness_blinder
         })
         .collect();
-
-        let to_be_spent_witnesses_serial_numbers_commitments: Vec<G2Projective> =
-            witnesses_to_be_spent_serial_numbers
-                .iter()
-                .map(|witness_serial_number| params.gen2() * witness_serial_number)
-                .collect();
 
         let witnesses_blinded_pay: G2Projective = witnesses_to_be_issued_values_decompositions
             .iter()
@@ -1004,11 +991,6 @@ impl ProofRequestPhase {
                 .iter()
                 .map(|v| v.to_bytes())
                 .collect::<Vec<_>>();
-        let to_be_spent_witnesses_serial_numbers_commitments_bytes =
-            to_be_spent_witnesses_serial_numbers_commitments
-                .iter()
-                .map(|v| v.to_bytes())
-                .collect::<Vec<_>>();
         let witnesses_blinded_pay_bytes = vec![witnesses_blinded_pay.to_bytes()];
         let range_proof_witnesses_decomposition_commitments_bytes =
             range_proof_witnesses_decomposition_commitments
@@ -1038,10 +1020,6 @@ impl ProofRequestPhase {
             .map(|v| v.to_bytes())
             .collect::<Vec<_>>();
         let to_be_spent_attributes_commitments_bytes = to_be_spent_attributes_commitments
-            .iter()
-            .map(|v| v.to_bytes())
-            .collect::<Vec<_>>();
-        let to_be_spent_serial_numbers_commitments_bytes = to_be_spent_serial_numbers_commitments
             .iter()
             .map(|v| v.to_bytes())
             .collect::<Vec<_>>();
@@ -1092,11 +1070,6 @@ impl ProofRequestPhase {
                         .iter()
                         .map(|v| v.as_ref()),
                 )
-                .chain(
-                    to_be_spent_witnesses_serial_numbers_commitments_bytes
-                        .iter()
-                        .map(|v| v.as_ref()),
-                )
                 .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
                 .chain(
                     range_proof_witnesses_decomposition_commitments_bytes
@@ -1122,11 +1095,6 @@ impl ProofRequestPhase {
                 )
                 .chain(
                     to_be_spent_attributes_commitments_bytes
-                        .iter()
-                        .map(|v| v.as_ref()),
-                )
-                .chain(
-                    to_be_spent_serial_numbers_commitments_bytes
                         .iter()
                         .map(|v| v.as_ref()),
                 )
@@ -1185,11 +1153,6 @@ impl ProofRequestPhase {
             &challenge,
             &to_be_spent_values,
         );
-        let responses_to_be_spent_serial_numbers = produce_responses(
-            &witnesses_to_be_spent_serial_numbers,
-            &challenge,
-            &to_be_spent_serial_numbers,
-        );
         let responses_to_be_spent_blinders = produce_responses(
             &witnesses_to_be_spent_blinders,
             &challenge,
@@ -1222,7 +1185,6 @@ impl ProofRequestPhase {
             responses_to_be_issued_values_openings,
             responses_to_be_issued_serial_numbers_openings,
             responses_to_be_spent_values,
-            responses_to_be_spent_serial_numbers,
             responses_to_be_spent_blinders,
             responses_range_proof_blinders,
         }
@@ -1238,7 +1200,6 @@ impl ProofRequestPhase {
         to_be_issued_values_commitments: &[G1Projective],
         to_be_issued_serial_numbers_commitments: &[G1Projective],
         to_be_spent_attributes_commitments: &[G2Projective],
-        to_be_spent_serial_numbers_commitments: &[G2Projective],
         blinded_pay: &G2Projective,
         range_proof_decompositions_commitments: &[Vec<G2Projective>],
     ) -> bool {
@@ -1343,34 +1304,15 @@ impl ProofRequestPhase {
         let to_be_spent_witnesses_attributes_commitments: Vec<G2Projective> = izip!(
             to_be_spent_attributes_commitments.iter(),
             self.responses_to_be_spent_values.iter(),
-            self.responses_to_be_spent_serial_numbers.iter(),
             self.responses_to_be_spent_blinders.iter()
         )
         .map(
-            |(
-                to_be_spent_attributes_commitment,
-                response_value,
-                response_serial_number,
-                response_blinder,
-            )| {
+            |(to_be_spent_attributes_commitment, response_value, response_blinder)| {
                 to_be_spent_attributes_commitment * self.challenge
                     + verification_key.alpha() * (Scalar::one() - self.challenge)
                     + verification_key.beta_g2()[0] * self.response_binding_number
                     + verification_key.beta_g2()[1] * response_value
-                    + verification_key.beta_g2()[2] * response_serial_number
                     + params.gen2() * response_blinder
-            },
-        )
-        .collect();
-
-        let to_be_spent_witnesses_serial_numbers_commitments: Vec<G2Projective> = izip!(
-            to_be_spent_serial_numbers_commitments.iter(),
-            self.responses_to_be_spent_serial_numbers.iter()
-        )
-        .map(
-            |(to_be_spent_serial_numbers_commitment, response_serial_number)| {
-                to_be_spent_serial_numbers_commitment * self.challenge
-                    + params.gen2() * response_serial_number
             },
         )
         .collect();
@@ -1492,11 +1434,6 @@ impl ProofRequestPhase {
                 .iter()
                 .map(|v| v.to_bytes())
                 .collect::<Vec<_>>();
-        let to_be_spent_witnesses_serial_numbers_commitments_bytes =
-            to_be_spent_witnesses_serial_numbers_commitments
-                .iter()
-                .map(|v| v.to_bytes())
-                .collect::<Vec<_>>();
         let witnesses_blinded_pay_bytes = vec![witnesses_blinded_pay.to_bytes()];
         let range_proof_witnesses_decomposition_commitments_bytes =
             range_proof_witnesses_decomposition_commitments
@@ -1526,10 +1463,6 @@ impl ProofRequestPhase {
             .map(|v| v.to_bytes())
             .collect::<Vec<_>>();
         let to_be_spent_attributes_commitments_bytes = to_be_spent_attributes_commitments
-            .iter()
-            .map(|v| v.to_bytes())
-            .collect::<Vec<_>>();
-        let to_be_spent_serial_numbers_commitments_bytes = to_be_spent_serial_numbers_commitments
             .iter()
             .map(|v| v.to_bytes())
             .collect::<Vec<_>>();
@@ -1580,11 +1513,6 @@ impl ProofRequestPhase {
                         .iter()
                         .map(|v| v.as_ref()),
                 )
-                .chain(
-                    to_be_spent_witnesses_serial_numbers_commitments_bytes
-                        .iter()
-                        .map(|v| v.as_ref()),
-                )
                 .chain(witnesses_blinded_pay_bytes.iter().map(|v| v.as_ref()))
                 .chain(
                     range_proof_witnesses_decomposition_commitments_bytes
@@ -1610,11 +1538,6 @@ impl ProofRequestPhase {
                 )
                 .chain(
                     to_be_spent_attributes_commitments_bytes
-                        .iter()
-                        .map(|v| v.as_ref()),
-                )
-                .chain(
-                    to_be_spent_serial_numbers_commitments_bytes
                         .iter()
                         .map(|v| v.as_ref()),
                 )
@@ -1686,12 +1609,6 @@ impl ProofRequestPhase {
             .map(|v| v.to_bytes())
             .flatten()
             .collect::<Vec<u8>>();
-        let responses_to_be_spent_serial_numbers_bytes = self
-            .responses_to_be_spent_serial_numbers
-            .iter()
-            .map(|v| v.to_bytes())
-            .flatten()
-            .collect::<Vec<u8>>();
         let responses_to_be_spent_blinders_bytes = self
             .responses_to_be_spent_blinders
             .iter()
@@ -1721,7 +1638,6 @@ impl ProofRequestPhase {
                 + responses_to_be_issued_values_openings_bytes.len()
                 + responses_to_be_issued_serial_numbers_openings_bytes.len()
                 + responses_to_be_spent_values_bytes.len()
-                + responses_to_be_spent_serial_numbers_bytes.len()
                 + responses_to_be_spent_blinders_bytes.len()
                 + responses_range_proof_blinders_bytes.len(),
         );
@@ -1739,7 +1655,6 @@ impl ProofRequestPhase {
         bytes.extend(responses_to_be_issued_values_openings_bytes);
         bytes.extend(responses_to_be_issued_serial_numbers_openings_bytes);
         bytes.extend(responses_to_be_spent_values_bytes);
-        bytes.extend(responses_to_be_spent_serial_numbers_bytes);
         bytes.extend(responses_to_be_spent_blinders_bytes);
         bytes.extend(responses_range_proof_blinders_bytes);
 
@@ -1874,17 +1789,6 @@ impl ProofRequestPhase {
 
         p = p_prime;
         p_prime += 32 * number_of_to_be_spent_vouchers as usize;
-        let responses_to_be_spent_serial_numbers_bytes = &bytes[p..p_prime];
-        let responses_to_be_spent_serial_numbers = try_deserialize_scalar_vec(
-            number_of_to_be_spent_vouchers as u64,
-            &responses_to_be_spent_serial_numbers_bytes,
-            CoconutError::Deserialization(
-                "failed to deserialize the responses to be spent serial numbers".to_string(),
-            ),
-        )?;
-
-        p = p_prime;
-        p_prime += 32 * number_of_to_be_spent_vouchers as usize;
         let responses_to_be_spent_blinders_bytes = &bytes[p..p_prime];
         let responses_to_be_spent_blinders = try_deserialize_scalar_vec(
             number_of_to_be_spent_vouchers as u64,
@@ -1927,7 +1831,6 @@ impl ProofRequestPhase {
             responses_to_be_issued_values_openings,
             responses_to_be_issued_serial_numbers_openings,
             responses_to_be_spent_values,
-            responses_to_be_spent_serial_numbers,
             responses_to_be_spent_blinders,
             responses_range_proof_blinders,
         })
@@ -2131,8 +2034,6 @@ mod tests {
             params.n_random_scalars(number_of_to_be_issued_vouchers as usize);
 
         let to_be_spent_values = params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
-        let to_be_spent_serial_numbers =
-            params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
         let to_be_spent_blinders = params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
 
         let mut range_proof_blinders = Vec::with_capacity(number_of_to_be_issued_vouchers as usize);
@@ -2165,14 +2066,6 @@ mod tests {
         ];
 
         let to_be_spent_attributes_commitments = [
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-            params.gen2() * params.random_scalar(),
-        ];
-
-        let to_be_spent_serial_numbers_commitments = [
             params.gen2() * params.random_scalar(),
             params.gen2() * params.random_scalar(),
             params.gen2() * params.random_scalar(),
@@ -2218,7 +2111,6 @@ mod tests {
             &to_be_issued_values_openings,
             &to_be_issued_serial_numbers_openings,
             &to_be_spent_values,
-            &to_be_spent_serial_numbers,
             &to_be_spent_blinders,
             &range_proof_blinders,
             &to_be_issued_commitments,
@@ -2226,7 +2118,6 @@ mod tests {
             &to_be_issued_values_commitments,
             &to_be_issued_serial_numbers_commitments,
             &to_be_spent_attributes_commitments,
-            &to_be_spent_serial_numbers_commitments,
             &blinded_pay,
             &range_proof_decompositions_commitments,
         );

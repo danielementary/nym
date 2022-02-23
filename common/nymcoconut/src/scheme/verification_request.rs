@@ -31,7 +31,6 @@ pub struct ThetaRequestPhase {
     to_be_issued_values_commitments: Vec<G1Projective>,
     to_be_issued_serial_numbers_commitments: Vec<G1Projective>,
     to_be_spent_attributes_commitments: Vec<G2Projective>,
-    pub to_be_spent_serial_numbers_commitments: Vec<G2Projective>,
     pub blinded_pay: G2Projective,
     range_proof_decompositions_commitments: Vec<Vec<G2Projective>>,
     // signatures
@@ -156,24 +155,6 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             to_be_spent_attributes_commitments.push(to_be_spent_attributes_commitment);
         }
 
-        let mut to_be_spent_serial_numbers_commitments =
-            Vec::with_capacity(number_of_to_be_spent_vouchers as usize);
-        for i in 0..number_of_to_be_spent_vouchers {
-            p = p_prime;
-            p_prime += 96;
-
-            let to_be_spent_serial_numbers_commitment_bytes = bytes[p..p_prime].try_into().unwrap();
-            let to_be_spent_serial_numbers_commitment = try_deserialize_g2_projective(
-                &to_be_spent_serial_numbers_commitment_bytes,
-                CoconutError::Deserialization(format!(
-                    "failed to deserialize the to_be_spent_serial_numbers_commitment at index {}",
-                    i
-                )),
-            )?;
-
-            to_be_spent_serial_numbers_commitments.push(to_be_spent_serial_numbers_commitment);
-        }
-
         p = p_prime;
         p_prime += 96;
         let blinded_pay_bytes = bytes[p..p_prime].try_into().unwrap();
@@ -248,7 +229,6 @@ impl TryFrom<&[u8]> for ThetaRequestPhase {
             to_be_issued_values_commitments,
             to_be_issued_serial_numbers_commitments,
             to_be_spent_attributes_commitments,
-            to_be_spent_serial_numbers_commitments,
             blinded_pay,
             range_proof_decompositions_commitments,
             to_be_spent_signatures,
@@ -365,7 +345,6 @@ impl ThetaRequestPhase {
             &self.to_be_issued_values_commitments,
             &self.to_be_issued_serial_numbers_commitments,
             &self.to_be_spent_attributes_commitments,
-            &self.to_be_spent_serial_numbers_commitments,
             &self.blinded_pay,
             &self.range_proof_decompositions_commitments,
         )
@@ -415,13 +394,6 @@ impl ThetaRequestPhase {
             .flatten()
             .collect::<Vec<u8>>();
 
-        let to_be_spent_serial_numbers_commitments_bytes = self
-            .to_be_spent_serial_numbers_commitments
-            .iter()
-            .map(|c| c.to_affine().to_compressed())
-            .flatten()
-            .collect::<Vec<u8>>();
-
         let blinded_pay_bytes = self.blinded_pay.to_affine().to_compressed();
 
         let range_proof_decompositions_commitments_bytes = self
@@ -459,7 +431,6 @@ impl ThetaRequestPhase {
                 + to_be_issued_values_commitments_bytes.len()
                 + to_be_issued_serial_numbers_commitments_bytes.len()
                 + to_be_spent_attributes_commitments_bytes.len()
-                + to_be_spent_serial_numbers_commitments_bytes.len()
                 + blinded_pay_bytes.len()
                 + range_proof_decompositions_commitments_bytes.len()
                 + to_be_spent_signatures_bytes.len()
@@ -476,7 +447,6 @@ impl ThetaRequestPhase {
         bytes.extend(to_be_issued_values_commitments_bytes);
         bytes.extend(to_be_issued_serial_numbers_commitments_bytes);
         bytes.extend(to_be_spent_attributes_commitments_bytes);
-        bytes.extend(to_be_spent_serial_numbers_commitments_bytes);
         bytes.extend(blinded_pay_bytes);
         bytes.extend(range_proof_decompositions_commitments_bytes);
         bytes.extend(to_be_spent_signatures_bytes);
@@ -519,7 +489,6 @@ pub fn randomise_and_request_vouchers(
     to_be_issued_serial_numbers: &[Scalar],
     // to be spent
     to_be_spent_values: &[Scalar],
-    to_be_spent_serial_numbers: &[Scalar],
     // vouchers
     to_be_spent_signatures: &[Signature],
 ) -> Result<ThetaRequestPhase> {
@@ -635,24 +604,15 @@ pub fn randomise_and_request_vouchers(
     .map(|(opening, hm, serial_number)| params.gen1() * opening + hm * serial_number)
     .collect();
 
-    let to_be_spent_attributes_commitments: Vec<G2Projective> = izip!(
-        to_be_spent_values.iter(),
-        to_be_spent_serial_numbers.iter(),
-        to_be_spent_blinders.iter()
-    )
-    .map(|(value, serial_number, blinder)| {
-        verification_key.alpha()
-            + verification_key.beta_g2()[0] * binding_number
-            + verification_key.beta_g2()[1] * value
-            + verification_key.beta_g2()[2] * serial_number
-            + params.gen2() * blinder
-    })
-    .collect();
-
-    let to_be_spent_serial_numbers_commitments: Vec<G2Projective> = to_be_spent_serial_numbers
-        .iter()
-        .map(|serial_number| params.gen2() * serial_number)
-        .collect();
+    let to_be_spent_attributes_commitments: Vec<G2Projective> =
+        izip!(to_be_spent_values.iter(), to_be_spent_blinders.iter())
+            .map(|(value, blinder)| {
+                verification_key.alpha()
+                    + verification_key.beta_g2()[0] * binding_number
+                    + verification_key.beta_g2()[1] * value
+                    + params.gen2() * blinder
+            })
+            .collect();
 
     let blinded_pay: G2Projective = to_be_issued_values_decompositions
         .iter()
@@ -704,7 +664,6 @@ pub fn randomise_and_request_vouchers(
         &to_be_issued_values_openings,
         &to_be_issued_serial_numbers_openings,
         &to_be_spent_values,
-        &to_be_spent_serial_numbers,
         &to_be_spent_blinders,
         &range_proof_blinders,
         &to_be_issued_commitments,
@@ -712,7 +671,6 @@ pub fn randomise_and_request_vouchers(
         &to_be_issued_values_commitments,
         &to_be_issued_serial_numbers_commitments,
         &to_be_spent_attributes_commitments,
-        &to_be_spent_serial_numbers_commitments,
         &blinded_pay,
         &range_proof_decompositions_commitments,
     );
@@ -727,7 +685,6 @@ pub fn randomise_and_request_vouchers(
         to_be_issued_values_commitments,
         to_be_issued_serial_numbers_commitments,
         to_be_spent_attributes_commitments,
-        to_be_spent_serial_numbers_commitments,
         blinded_pay,
         range_proof_decompositions_commitments,
         to_be_spent_signatures,
@@ -741,6 +698,7 @@ pub fn verify_request_vouchers(
     verification_key: &VerificationKey,
     range_proof_verification_key: &VerificationKey,
     theta: &ThetaRequestPhase,
+    serial_numbers: &[Scalar],
     infos: &[Scalar],
 ) -> bool {
     if verification_key.beta_g2.len() < 4 {
@@ -751,14 +709,17 @@ pub fn verify_request_vouchers(
         return false;
     }
 
-    let to_be_spent_attributes_commitments: Vec<G2Projective> = theta
-        .to_be_spent_attributes_commitments
-        .iter()
-        .zip(infos.iter())
-        .map(|(to_be_spent_attributes_commitment, info)| {
-            to_be_spent_attributes_commitment + verification_key.beta_g2()[3] * info
-        })
-        .collect();
+    let to_be_spent_attributes_commitments: Vec<G2Projective> = izip!(
+        theta.to_be_spent_attributes_commitments.iter(),
+        serial_numbers.iter(),
+        infos.iter()
+    )
+    .map(|(to_be_spent_attributes_commitment, serial_number, info)| {
+        to_be_spent_attributes_commitment
+            + verification_key.beta_g2()[2] * serial_number
+            + verification_key.beta_g2()[3] * info
+    })
+    .collect();
 
     for (to_be_spent_signature, to_be_spent_attributes_commitment) in izip!(
         theta.to_be_spent_signatures.iter(),
@@ -845,9 +806,6 @@ mod tests {
             Scalar::from(6),
         ];
 
-        let to_be_spent_serial_numbers =
-            params.n_random_scalars(number_of_to_be_spent_vouchers as usize);
-
         let to_be_spent_signatures = [
             Signature(
                 params.gen1() * params.random_scalar(),
@@ -884,7 +842,6 @@ mod tests {
             &to_be_issued_values,
             &to_be_issued_serial_numbers,
             &to_be_spent_values,
-            &to_be_spent_serial_numbers,
             &to_be_spent_signatures,
         )
         .unwrap();

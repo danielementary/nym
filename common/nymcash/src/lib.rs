@@ -378,8 +378,7 @@ impl VouchersAndSignatures {
         coconut_params: &Parameters,
         threshold_of_validators: usize,
         blinded_signatures_shares_per_validator: &[BlindedSignatureShares],
-        blinded_signatures_shares_openings: &[Openings],
-        blinded_signatures_shares_requests: &[BlindSignRequest],
+        blinded_signatures_shares_openings: &(Openings, Openings, Openings),
         validators_verification_keys: &[VerificationKey],
         validators_verification_key: &VerificationKey,
     ) {
@@ -387,14 +386,48 @@ impl VouchersAndSignatures {
             &blinded_signatures_shares_per_validator[..threshold_of_validators],
         );
 
-        let signatures_shares = unblind_vouchers_signatures_shares(
-            &coconut_params,
-            &blinded_signatures_shares,
-            &self.to_be_issued_vouchers,
-            &blinded_signatures_shares_openings,
-            &blinded_signatures_shares_requests,
-            &validators_verification_keys[..threshold_of_validators],
-        );
+        let (
+            blinded_signatures_shares_binding_number_openings,
+            blinded_signatures_shares_values_openings,
+            blinded_signatures_shares_serial_numbers_openings,
+        ) = blinded_signatures_shares_openings;
+
+        let signatures_shares = izip!(
+            blinded_signatures_shares.iter(),
+            blinded_signatures_shares_binding_number_openings.iter(),
+            blinded_signatures_shares_values_openings.iter(),
+            blinded_signatures_shares_serial_numbers_openings.iter(),
+        )
+        .map(
+            |(
+                blinded_signature_shares,
+                blinded_signature_share_binding_number_opening,
+                blinded_signature_share_value_opening,
+                blinded_signature_share_serial_numbers_opening,
+            )| {
+                izip!(
+                    blinded_signature_shares.iter(),
+                    validators_verification_keys.iter()
+                )
+                .map(|(blinded_signature_share, validator_verification_key)| {
+                    let unblinded_signature = blinded_signature_share.1
+                        - (validator_verification_key.beta_g1()[0]
+                            * blinded_signature_share_binding_number_opening
+                            + validator_verification_key.beta_g1()[1]
+                                * blinded_signature_share_value_opening
+                            + validator_verification_key.beta_g1()[2]
+                                * blinded_signature_share_serial_numbers_opening);
+
+                    Signature(blinded_signature_share.0, unblinded_signature)
+                })
+                .enumerate()
+                .map(|(index, signature_share)| {
+                    SignatureShare::new(signature_share, (index + 1) as u64)
+                })
+                .collect::<SignatureShares>()
+            },
+        )
+        .collect();
 
         let signatures = aggregate_vouchers_signatures_shares(
             &coconut_params,
@@ -632,7 +665,7 @@ fn unblind_vouchers_signatures_shares(
 // return aggregated vouchers signatures
 fn aggregate_vouchers_signatures_shares(
     params: &Parameters,
-    signatures_shares: &[SignatureShares],
+    signatures_shares: &Vec<SignatureShares>,
     vouchers: &[Voucher],
     validators_verification_key: &VerificationKey,
 ) -> Vec<Signature> {
@@ -781,7 +814,6 @@ mod tests {
             threshold_of_validators,
             &blinded_signatures_shares_per_validator_1,
             &openings_1,
-            &request_1.to_be_issued_blinded_signatures_shares_requests,
             &validators_verification_keys,
             &validators_verification_key,
         );
@@ -854,7 +886,6 @@ mod tests {
             threshold_of_validators,
             &blinded_signatures_shares_per_validator_2,
             &openings_2,
-            &request_2.to_be_issued_blinded_signatures_shares_requests,
             &validators_verification_keys,
             &validators_verification_key,
         );

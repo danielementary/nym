@@ -25,8 +25,8 @@ use crate::Base58;
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct SecretKey {
-    pub(crate) x: Scalar,
-    pub(crate) ys: Vec<Scalar>,
+    pub x: Scalar,
+    pub ys: Vec<Scalar>,
 }
 
 impl TryFrom<&[u8]> for SecretKey {

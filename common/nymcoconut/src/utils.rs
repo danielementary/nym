@@ -122,7 +122,7 @@ const G1_HASH_DOMAIN: &[u8] = b"QUUX-V01-CS02-with-BLS12381G1_XMD:SHA-256_SSWU_R
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-11#appendix-K.1
 const SCALAR_HASH_DOMAIN: &[u8] = b"QUUX-V01-CS02-with-expander";
 
-pub(crate) fn hash_g1<M: AsRef<[u8]>>(msg: M) -> G1Projective {
+pub fn hash_g1<M: AsRef<[u8]>>(msg: M) -> G1Projective {
     <G1Projective as HashToCurve<ExpandMsgXmd<sha2::Sha256>>>::hash_to_curve(msg, G1_HASH_DOMAIN)
 }
 

@@ -107,7 +107,7 @@ impl Base58 for Signature {}
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct BlindedSignature(G1Projective, G1Projective);
+pub struct BlindedSignature(pub G1Projective, pub G1Projective);
 
 impl Bytable for BlindedSignature {
     fn to_byte_vec(&self) -> Vec<u8> {

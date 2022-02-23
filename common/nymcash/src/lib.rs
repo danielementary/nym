@@ -1,7 +1,8 @@
 use bls12_381::{G2Projective, Scalar};
+use group::Curve;
 use itertools::izip;
 use nymcoconut::{
-    aggregate_signature_shares, blind_sign, randomise_and_request_vouchers,
+    aggregate_signature_shares, hash_g1, randomise_and_request_vouchers,
     randomise_and_spend_vouchers, scalar_to_u64, verify_request_vouchers, verify_spent_vouchers,
     BlindSignRequest, BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature,
     SignatureShare, ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
@@ -509,15 +510,30 @@ impl ThetaRequestAndInfos {
         // add double_spending_tags to bulletin board
         bulletin_board.add_tags(double_spending_tags, 1);
 
-        (
-            true,
-            vouchers_blind_sign(
-                &params.coconut_params,
-                &self.theta,
-                &self.to_be_issued_infos,
-                &validator_key_pair,
-            ),
+        (true, self.vouchers_blind_sign(&validator_key_pair))
+    }
+
+    fn vouchers_blind_sign(&self, validator_key_pair: &KeyPair) -> Vec<BlindedSignatureShare> {
+        izip!(
+            self.theta.to_be_issued_commitments.iter(),
+            self.theta.to_be_issued_binding_number_commitments.iter(),
+            self.theta.to_be_issued_values_commitments.iter(),
+            self.theta.to_be_issued_serial_numbers_commitments.iter(),
+            self.to_be_issued_infos.iter()
         )
+        .map(|(com, bn_com, v_com, sn_com, infos)| {
+            let h = hash_g1(com.to_affine().to_compressed());
+
+            let sk_i = validator_key_pair.secret_key();
+            let blinded_signature = h * sk_i.x
+                + bn_com * sk_i.ys[0]
+                + v_com * sk_i.ys[1]
+                + sn_com * sk_i.ys[2]
+                + h * infos * sk_i.ys[3];
+
+            BlindedSignature(h, blinded_signature)
+        })
+        .collect()
     }
 }
 
@@ -592,28 +608,28 @@ impl BulletinBoard {
 //         .unzip()
 // }
 
-// returns the list of blinded signatures shares
-fn vouchers_blind_sign(
-    params: &Parameters,
-    blinded_signatures_shares_requests: &[BlindSignRequest],
-    vouchers_public_attributes: &[Attributes],
-    validator_key_pair: &KeyPair,
-) -> Vec<BlindedSignatureShare> {
-    izip!(
-        blinded_signatures_shares_requests.iter(),
-        vouchers_public_attributes.iter()
-    )
-    .map(|(request, public_attributes)| {
-        blind_sign(
-            &params,
-            &validator_key_pair.secret_key(),
-            &request,
-            &public_attributes,
-        )
-        .unwrap()
-    })
-    .collect()
-}
+// // returns the list of blinded signatures shares
+// fn vouchers_blind_sign(
+//     params: &Parameters,
+//     blinded_signatures_shares_requests: &[BlindSignRequest],
+//     vouchers_public_attributes: &[Attributes],
+//     validator_key_pair: &KeyPair,
+// ) -> Vec<BlindedSignatureShare> {
+//     izip!(
+//         blinded_signatures_shares_requests.iter(),
+//         vouchers_public_attributes.iter()
+//     )
+//     .map(|(request, public_attributes)| {
+//         blind_sign(
+//             &params,
+//             &validator_key_pair.secret_key(),
+//             &request,
+//             &public_attributes,
+//         )
+//         .unwrap()
+//     })
+//     .collect()
+// }
 
 // return the list of unblinded signatures shares
 fn unblind_vouchers_signatures_shares(

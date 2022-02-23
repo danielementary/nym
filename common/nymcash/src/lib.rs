@@ -4,8 +4,8 @@ use itertools::izip;
 use nymcoconut::{
     aggregate_signature_shares, hash_g1, randomise_and_request_vouchers,
     randomise_and_spend_vouchers, scalar_to_u64, verify_request_vouchers, verify_spent_vouchers,
-    BlindSignRequest, BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature,
-    SignatureShare, ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
+    BlindedSignature, KeyPair, Parameters, RangeProofSignatures, Signature, SignatureShare,
+    ThetaRequestPhase, ThetaSpendPhase, VerificationKey,
 };
 
 // define new types for clarity
@@ -66,14 +66,6 @@ impl Voucher {
             .collect()
     }
 
-    fn private_attributes(&self) -> Attributes {
-        vec![self.binding_number, self.value, self.serial_number]
-    }
-
-    fn public_attributes(&self) -> Attributes {
-        vec![self.info]
-    }
-
     fn attributes(&self) -> Attributes {
         vec![
             self.binding_number,
@@ -104,15 +96,14 @@ struct VouchersAndSignatures {
     spent_vouchers: Vec<VoucherAndSignature>,       // signed vouchers that have already been spent
 }
 
-// used to return a proof theta and the corresponding (public) infos to verify it
+// used to return a proof theta and the corresponding revealed attributes to verify it
 struct ThetaSpendAndInfos {
     theta: ThetaSpendPhase,
     serial_numbers: Attributes,
     infos: Attributes,
 }
 
-// used to return a proof theta and the corresponding (public) infos to verify it
-// as well as the requests to get the to_be_issued_vouchers signed
+// used to return a proof theta and the corresponding revealed attributes to verify it
 struct ThetaRequestAndInfos {
     theta: ThetaRequestPhase,
     to_be_issued_infos: Attributes,
@@ -378,7 +369,9 @@ impl VouchersAndSignatures {
         coconut_params: &Parameters,
         threshold_of_validators: usize,
         blinded_signatures_shares_per_validator: &[BlindedSignatureShares],
-        blinded_signatures_shares_openings: &(Openings, Openings, Openings),
+        blinded_signatures_shares_binding_number_openings: &Openings,
+        blinded_signatures_shares_values_openings: &Openings,
+        blinded_signatures_shares_serial_numbers_openings: &Openings,
         validators_verification_keys: &[VerificationKey],
         validators_verification_key: &VerificationKey,
     ) {
@@ -386,48 +379,13 @@ impl VouchersAndSignatures {
             &blinded_signatures_shares_per_validator[..threshold_of_validators],
         );
 
-        let (
-            blinded_signatures_shares_binding_number_openings,
-            blinded_signatures_shares_values_openings,
-            blinded_signatures_shares_serial_numbers_openings,
-        ) = blinded_signatures_shares_openings;
-
-        let signatures_shares = izip!(
-            blinded_signatures_shares.iter(),
-            blinded_signatures_shares_binding_number_openings.iter(),
-            blinded_signatures_shares_values_openings.iter(),
-            blinded_signatures_shares_serial_numbers_openings.iter(),
-        )
-        .map(
-            |(
-                blinded_signature_shares,
-                blinded_signature_share_binding_number_opening,
-                blinded_signature_share_value_opening,
-                blinded_signature_share_serial_numbers_opening,
-            )| {
-                izip!(
-                    blinded_signature_shares.iter(),
-                    validators_verification_keys.iter()
-                )
-                .map(|(blinded_signature_share, validator_verification_key)| {
-                    let unblinded_signature = blinded_signature_share.1
-                        - (validator_verification_key.beta_g1()[0]
-                            * blinded_signature_share_binding_number_opening
-                            + validator_verification_key.beta_g1()[1]
-                                * blinded_signature_share_value_opening
-                            + validator_verification_key.beta_g1()[2]
-                                * blinded_signature_share_serial_numbers_opening);
-
-                    Signature(blinded_signature_share.0, unblinded_signature)
-                })
-                .enumerate()
-                .map(|(index, signature_share)| {
-                    SignatureShare::new(signature_share, (index + 1) as u64)
-                })
-                .collect::<SignatureShares>()
-            },
-        )
-        .collect();
+        let signatures_shares = unblind_vouchers_signatures_shares(
+            &blinded_signatures_shares,
+            &blinded_signatures_shares_binding_number_openings,
+            &blinded_signatures_shares_values_openings,
+            &blinded_signatures_shares_serial_numbers_openings,
+            &validators_verification_keys,
+        );
 
         let signatures = aggregate_vouchers_signatures_shares(
             &coconut_params,
@@ -571,6 +529,9 @@ impl ThetaRequestAndInfos {
 }
 
 struct BulletinBoard {
+    // store double spending tags and corresponding value
+    // which is incremented by 1 during during request protocol
+    // or incremented by threshold of validators during spend protocol
     double_spending_tags: Vec<(G2Projective, u8)>,
 }
 
@@ -623,65 +584,8 @@ impl BulletinBoard {
     }
 }
 
-// return the list of unblinded signatures shares
-fn unblind_vouchers_signatures_shares(
-    params: &Parameters,
-    blinded_signatures_shares: &[BlindedSignatureShares],
-    vouchers: &[Voucher],
-    blinded_signatures_shares_openings: &[Openings],
-    blinded_signatures_shares_requests: &[BlindSignRequest],
-    validators_verification_keys: &[VerificationKey],
-) -> Vec<SignatureShares> {
-    izip!(
-        blinded_signatures_shares.iter(),
-        vouchers.iter(),
-        blinded_signatures_shares_openings.iter(),
-        blinded_signatures_shares_requests.iter()
-    )
-    .map(|(blinded_signature_shares, voucher, openings, request)| {
-        izip!(
-            blinded_signature_shares.iter(),
-            validators_verification_keys.iter()
-        )
-        .map(|(blinded_signature_share, validator_verification_key)| {
-            blinded_signature_share // unblind each signature share issued by each validator
-                .unblind(
-                    &params,
-                    &validator_verification_key,
-                    &voucher.private_attributes(),
-                    &voucher.public_attributes(),
-                    &request.get_commitment_hash(),
-                    &openings,
-                )
-                .unwrap()
-        })
-        .enumerate()
-        .map(|(index, signature_share)| SignatureShare::new(signature_share, (index + 1) as u64))
-        .collect::<SignatureShares>()
-    })
-    .collect()
-}
-
-// return aggregated vouchers signatures
-fn aggregate_vouchers_signatures_shares(
-    params: &Parameters,
-    signatures_shares: &Vec<SignatureShares>,
-    vouchers: &[Voucher],
-    validators_verification_key: &VerificationKey,
-) -> Vec<Signature> {
-    izip!(signatures_shares.iter(), vouchers.iter())
-        .map(|(signature_share, voucher)| {
-            aggregate_signature_shares(
-                &params,
-                &validators_verification_key,
-                &voucher.attributes(),
-                &signature_share,
-            )
-            .unwrap()
-        })
-        .collect()
-}
-
+// given the list of all the shares signed by the same validator
+// returns the share grouped for the same voucher
 fn transpose_shares_per_validators_into_shares_per_vouchers(
     signatures_shares: &[BlindedSignatureShares],
 ) -> Vec<BlindedSignatureShares> {
@@ -696,6 +600,70 @@ fn transpose_shares_per_validators_into_shares_per_vouchers(
                 .collect::<BlindedSignatureShares>()
         })
         .collect::<Vec<BlindedSignatureShares>>()
+}
+
+fn unblind_vouchers_signatures_shares(
+    blinded_signatures_shares: &Vec<BlindedSignatureShares>,
+    blinded_signatures_shares_binding_number_openings: &Openings,
+    blinded_signatures_shares_values_openings: &Openings,
+    blinded_signatures_shares_serial_numbers_openings: &Openings,
+    validators_verification_keys: &[VerificationKey],
+) -> Vec<SignatureShares> {
+    izip!(
+        blinded_signatures_shares.iter(),
+        blinded_signatures_shares_binding_number_openings.iter(),
+        blinded_signatures_shares_values_openings.iter(),
+        blinded_signatures_shares_serial_numbers_openings.iter(),
+    )
+    .map(
+        |(
+            blinded_signature_shares,
+            blinded_signature_share_binding_number_opening,
+            blinded_signature_share_value_opening,
+            blinded_signature_share_serial_numbers_opening,
+        )| {
+            izip!(
+                blinded_signature_shares.iter(),
+                validators_verification_keys.iter()
+            )
+            .map(|(blinded_signature_share, validator_verification_key)| {
+                let unblinded_signature = blinded_signature_share.1
+                    - (validator_verification_key.beta_g1()[0]
+                        * blinded_signature_share_binding_number_opening
+                        + validator_verification_key.beta_g1()[1]
+                            * blinded_signature_share_value_opening
+                        + validator_verification_key.beta_g1()[2]
+                            * blinded_signature_share_serial_numbers_opening);
+
+                Signature(blinded_signature_share.0, unblinded_signature)
+            })
+            .enumerate()
+            .map(|(index, signature_share)| {
+                SignatureShare::new(signature_share, (index + 1) as u64)
+            })
+            .collect::<SignatureShares>()
+        },
+    )
+    .collect()
+}
+
+fn aggregate_vouchers_signatures_shares(
+    params: &Parameters,
+    signatures_shares: &Vec<SignatureShares>,
+    vouchers: &Vec<Voucher>,
+    validators_verification_key: &VerificationKey,
+) -> Vec<Signature> {
+    izip!(signatures_shares.iter(), vouchers.iter())
+        .map(|(signature_share, voucher)| {
+            aggregate_signature_shares(
+                &params,
+                &validators_verification_key,
+                &voucher.attributes(),
+                &signature_share,
+            )
+            .unwrap()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -764,8 +732,8 @@ mod tests {
         let to_be_issued_values_1: Vec<Scalar> = vec![Scalar::from(100)];
         let to_be_spent_values_1: Vec<Scalar> = vec![];
 
-        let (request_1, openings_1) = vouchers_and_signatures
-            .randomise_and_prove_to_request_vouchers(
+        let (request_1, (openings_1_binding_number, openings_1_values, openings_1_serial_numbers)) =
+            vouchers_and_signatures.randomise_and_prove_to_request_vouchers(
                 &params.coconut_params,
                 &validators_verification_key,
                 &range_proof_verification_key,
@@ -813,7 +781,9 @@ mod tests {
             &params.coconut_params,
             threshold_of_validators,
             &blinded_signatures_shares_per_validator_1,
-            &openings_1,
+            &openings_1_binding_number,
+            &openings_1_values,
+            &openings_1_serial_numbers,
             &validators_verification_keys,
             &validators_verification_key,
         );
@@ -830,8 +800,8 @@ mod tests {
         let to_be_issued_values_2: Vec<Scalar> = vec![Scalar::from(75), Scalar::from(25)];
         let to_be_spent_values_2: Vec<Scalar> = vec![Scalar::from(100)];
 
-        let (request_2, openings_2) = vouchers_and_signatures
-            .randomise_and_prove_to_request_vouchers(
+        let (request_2, (openings_2_binding_number, openings_2_values, openings_2_serial_numbers)) =
+            vouchers_and_signatures.randomise_and_prove_to_request_vouchers(
                 &params.coconut_params,
                 &validators_verification_key,
                 &range_proof_verification_key,
@@ -885,7 +855,9 @@ mod tests {
             &params.coconut_params,
             threshold_of_validators,
             &blinded_signatures_shares_per_validator_2,
-            &openings_2,
+            &openings_2_binding_number,
+            &openings_2_values,
+            &openings_2_serial_numbers,
             &validators_verification_keys,
             &validators_verification_key,
         );

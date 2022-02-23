@@ -590,47 +590,6 @@ impl BulletinBoard {
     }
 }
 
-// // returns a tuple with blind signatures requests and corresponding openings
-// fn prepare_vouchers_blind_sign(
-//     params: &Parameters,
-//     vouchers: &[Voucher],
-// ) -> (Vec<Openings>, Vec<BlindSignRequest>) {
-//     vouchers
-//         .iter()
-//         .map(|voucher| {
-//             prepare_blind_sign(
-//                 &params,
-//                 &voucher.private_attributes(),
-//                 &voucher.public_attributes(),
-//             )
-//             .unwrap()
-//         })
-//         .unzip()
-// }
-
-// // returns the list of blinded signatures shares
-// fn vouchers_blind_sign(
-//     params: &Parameters,
-//     blinded_signatures_shares_requests: &[BlindSignRequest],
-//     vouchers_public_attributes: &[Attributes],
-//     validator_key_pair: &KeyPair,
-// ) -> Vec<BlindedSignatureShare> {
-//     izip!(
-//         blinded_signatures_shares_requests.iter(),
-//         vouchers_public_attributes.iter()
-//     )
-//     .map(|(request, public_attributes)| {
-//         blind_sign(
-//             &params,
-//             &validator_key_pair.secret_key(),
-//             &request,
-//             &public_attributes,
-//         )
-//         .unwrap()
-//     })
-//     .collect()
-// }
-
 // return the list of unblinded signatures shares
 fn unblind_vouchers_signatures_shares(
     params: &Parameters,

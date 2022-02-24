@@ -10,3 +10,11 @@ nymcoconut = { path = "../nymcoconut" }
 bls12_381 = { version = "0.5", default-features = false, features = ["pairings", "alloc", "experimental"] }
 itertools = "0.10"
 group = { version = "0.10", default-features = false}
+
+[dev-dependencies]
+criterion = { version="0.3", features=["html_reports"] }
+doc-comment = "0.3"
+
+[[bench]]
+name = "final_benchmark"
+harness = false

@@ -3807,6 +3807,8 @@ name = "nymcash"
 version = "0.1.0"
 dependencies = [
  "bls12_381",
+ "criterion",
+ "doc-comment",
  "group",
  "itertools",
  "nymcoconut",

@@ -16,7 +16,7 @@ type Opening = Scalar;
 type Openings = Vec<Opening>;
 
 type BlindedSignatureShare = BlindedSignature;
-type BlindedSignatureShares = Vec<BlindedSignatureShare>;
+pub type BlindedSignatureShares = Vec<BlindedSignatureShare>;
 
 type SignatureShares = Vec<SignatureShare>;
 
@@ -38,7 +38,7 @@ impl ECashParams {
 }
 
 #[derive(Debug, Copy, Clone)]
-struct Voucher {
+pub struct Voucher {
     binding_number: Attribute,
     value: Attribute,
     serial_number: Attribute,
@@ -75,7 +75,7 @@ impl Voucher {
         ]
     }
 
-    fn number_of_attributes() -> u32 {
+    pub fn number_of_attributes() -> u32 {
         4
     }
 }
@@ -88,7 +88,7 @@ struct VoucherAndSignature {
 }
 
 // store all the vouchers and signatures of a given user
-struct VouchersAndSignatures {
+pub struct VouchersAndSignatures {
     binding_number: Scalar,
     unspent_vouchers: Vec<VoucherAndSignature>, // signed vouchers that have not yet been spent
     to_be_issued_vouchers: Vec<Voucher>,        // temporary place for vouchers before being issued
@@ -97,22 +97,22 @@ struct VouchersAndSignatures {
 }
 
 // used to return a proof theta and the corresponding revealed attributes to verify it
-struct ThetaSpendAndInfos {
-    theta: ThetaSpendPhase,
+pub struct ThetaSpendAndInfos {
+    pub theta: ThetaSpendPhase,
     serial_numbers: Attributes,
     infos: Attributes,
 }
 
 // used to return a proof theta and the corresponding revealed attributes to verify it
-struct ThetaRequestAndInfos {
-    theta: ThetaRequestPhase,
+pub struct ThetaRequestAndInfos {
+    pub theta: ThetaRequestPhase,
     to_be_issued_infos: Attributes,
     to_be_spent_serial_numbers: Attributes,
     to_be_spent_infos: Attributes,
 }
 
 impl VouchersAndSignatures {
-    fn new_empty(binding_number: Scalar) -> Self {
+    pub fn new_empty(binding_number: Scalar) -> Self {
         Self {
             binding_number,
             unspent_vouchers: vec![],
@@ -193,7 +193,7 @@ impl VouchersAndSignatures {
 
     // prepare proof and material to verify it for spending amount _pay_
     // spending _to_be_spent_values_ and being issued _to_be_issued_values_ vouchers
-    fn randomise_and_prove_to_request_vouchers(
+    pub fn randomise_and_prove_to_request_vouchers(
         &mut self,
         coconut_params: &Parameters,
         validators_verification_key: &VerificationKey,
@@ -303,7 +303,7 @@ impl VouchersAndSignatures {
         )
     }
 
-    fn randomise_and_prove_to_be_spent_vouchers(
+    pub fn randomise_and_prove_to_be_spent_vouchers(
         &mut self,
         coconut_params: &Parameters,
         validator_verification_key: &VerificationKey,
@@ -401,7 +401,7 @@ impl VouchersAndSignatures {
 
 impl ThetaSpendAndInfos {
     // return true if the vouchers are accepted, false otherwise
-    fn verify(
+    pub fn verify(
         &self,
         coconut_params: &Parameters,
         validators_verification_key: &VerificationKey,
@@ -448,7 +448,7 @@ impl ThetaSpendAndInfos {
 }
 
 impl ThetaRequestAndInfos {
-    fn verify(
+    pub fn verify(
         &self,
         params: &ECashParams,
         validator_key_pair: &KeyPair,
@@ -528,7 +528,7 @@ impl ThetaRequestAndInfos {
     }
 }
 
-struct BulletinBoard {
+pub struct BulletinBoard {
     // store double spending tags and corresponding value
     // which is incremented by 1 during during request protocol
     // or incremented by threshold of validators during spend protocol
@@ -536,7 +536,7 @@ struct BulletinBoard {
 }
 
 impl BulletinBoard {
-    fn new() -> Self {
+    pub fn new() -> Self {
         BulletinBoard {
             double_spending_tags: vec![],
         }

@@ -1,15 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use bls12_381::{G2Projective, Scalar};
-use group::Curve;
-use itertools::izip;
-use nymcash::{BlindedSignatureShares, BulletinBoard, ECashParams, Voucher, VouchersAndSignatures};
+use bls12_381::Scalar;
+use nymcash::{ECashParams, Voucher};
 use nymcoconut::{
-    aggregate_signature_shares, aggregate_verification_keys, hash_g1, issue_range_signatures,
-    keygen, randomise_and_request_vouchers, randomise_and_spend_vouchers, scalar_to_u64,
-    ttp_keygen, verify_request_vouchers, verify_spent_vouchers, BlindedSignature, KeyPair,
-    Parameters, RangeProofSignatures, Signature, SignatureShare, ThetaRequestPhase,
-    ThetaSpendPhase, VerificationKey,
+    aggregate_verification_keys, issue_range_signatures, keygen, randomise_and_request_vouchers,
+    randomise_and_spend_vouchers, ttp_keygen, Signature, VerificationKey,
 };
 
 pub fn bench_e2e_e_cash(c: &mut Criterion) {
@@ -68,7 +63,7 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         let number_of_to_be_spent_vouchers = 0 as u8;
 
         let mut to_be_issued_values = vec![];
-        for j in 0..i {
+        for _ in 0..i {
             to_be_issued_values.push(Scalar::from(10));
         }
         let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(i);
@@ -115,18 +110,12 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
 
         println!("theta length {} bytes", theta.to_bytes().len());
 
-        let serial_numbers = [];
-        let infos = [];
-
         c.bench_function(format!("Verification {} 0", i), |b| {
             b.iter(|| {
-                verify_request_vouchers(
+                theta.verify_proof(
                     &params.coconut_params,
                     &validators_verification_key,
                     &range_proof_verification_key,
-                    &theta,
-                    &serial_numbers,
-                    &infos,
                 )
             });
         });
@@ -138,11 +127,11 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         let number_of_to_be_issued_vouchers = 1 as u8;
         let number_of_to_be_spent_vouchers = i as u8;
 
-        let mut to_be_issued_values = vec![Scalar::from(i * 10)];
+        let to_be_issued_values = vec![Scalar::from(i * 10)];
         let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(1);
 
         let mut to_be_spent_values = vec![];
-        for j in 0..i {
+        for _ in 0..i {
             to_be_spent_values.push(Scalar::from(10));
         }
         let mut to_be_spent_signatures = vec![];
@@ -190,18 +179,12 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
 
         println!("theta length {} bytes", theta.to_bytes().len());
 
-        let serial_numbers = params.coconut_params.n_random_scalars(i as usize);
-        let infos = params.coconut_params.n_random_scalars(i as usize);
-
         c.bench_function(format!("Verification 1 {}", i as usize), |b| {
             b.iter(|| {
-                verify_request_vouchers(
+                theta.verify_proof(
                     &params.coconut_params,
                     &validators_verification_key,
                     &range_proof_verification_key,
-                    &theta,
-                    &serial_numbers,
-                    &infos,
                 )
             });
         });
@@ -211,11 +194,11 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         println!("Spend {}", i);
 
         let mut values = vec![];
-        for j in 0..i {
+        for _ in 0..i {
             values.push(Scalar::from(10));
         }
         let mut signatures = vec![];
-        for j in 0..i {
+        for _ in 0..i {
             signatures.push(Signature(
                 params.coconut_params.gen1() * params.coconut_params.random_scalar(),
                 params.coconut_params.gen1() * params.coconut_params.random_scalar(),
@@ -245,19 +228,8 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
 
         println!("theta length {} bytes", theta.to_bytes().len());
 
-        let serial_numbers = params.coconut_params.n_random_scalars(i as usize);
-        let infos = params.coconut_params.n_random_scalars(i as usize);
-
         c.bench_function(format!("Verification {}", i as usize), |b| {
-            b.iter(|| {
-                verify_spent_vouchers(
-                    &params.coconut_params,
-                    &validators_verification_key,
-                    &theta,
-                    &serial_numbers,
-                    &infos,
-                )
-            });
+            b.iter(|| theta.verify_proof(&params.coconut_params, &validators_verification_key));
         });
     }
 

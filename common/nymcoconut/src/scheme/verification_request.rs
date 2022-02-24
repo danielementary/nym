@@ -330,7 +330,7 @@ fn pick_signatures_for_decomposition(
 }
 
 impl ThetaRequestPhase {
-    fn verify_proof(
+    pub fn verify_proof(
         &self,
         params: &Parameters,
         verification_key: &VerificationKey,

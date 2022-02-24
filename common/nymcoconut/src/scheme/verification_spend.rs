@@ -96,7 +96,7 @@ impl TryFrom<&[u8]> for ThetaSpendPhase {
 }
 
 impl ThetaSpendPhase {
-    fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey) -> bool {
+    pub fn verify_proof(&self, params: &Parameters, verification_key: &VerificationKey) -> bool {
         self.pi_v.verify(
             params,
             verification_key,

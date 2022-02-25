@@ -62,7 +62,7 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         range_proof_base_u as usize,
     );
 
-    for iteration in 1..=1 {
+    for iteration in 1..=3 {
         let number_of_to_be_issued_vouchers = iteration;
         let number_of_to_be_spent_vouchers = 0;
 
@@ -149,7 +149,16 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
             to_be_spent_infos,
         };
 
-        // TODO add communication cost from client to authority for request
+        // communication cost from client to authority for request
+        // one attribute is 32 bytes long
+        println!(
+            "request communication cost, issued: {} spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            theta_request.theta.to_bytes().len()
+                + number_of_to_be_issued_vouchers as usize * 32
+                + 2 * number_of_to_be_spent_vouchers as usize * 32
+        );
 
         // benchmark issuance varying issued vouchers
         c.bench_function(
@@ -172,7 +181,14 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
             },
         );
 
-        // TODO add communication cost from authority to client for blind signatures
+        // communication cost from authority to client for blind signatures
+        // one blind signature is 96 bytes long
+        println!(
+            "issuance communication cost, issued: {} spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            number_of_to_be_issued_vouchers * 96
+        );
 
         let blinded_signatures_shares_per_validator = validators_key_pairs
             .iter()
@@ -319,7 +335,16 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
             to_be_spent_infos,
         };
 
-        // TODO add communication cost from client to authority for spend
+        // communication cost from client to authority for request
+        // one attribute is 32 bytes long
+        println!(
+            "request communication cost, issued: {} spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            theta_request.theta.to_bytes().len()
+                + number_of_to_be_issued_vouchers as usize * 32
+                + 2 * number_of_to_be_spent_vouchers as usize * 32
+        );
 
         // benchmark issuance varying spent vouchers
         c.bench_function(
@@ -340,6 +365,15 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
                     theta_request.vouchers_blind_sign(&validators_key_pairs[0])
                 })
             },
+        );
+
+        // communication cost from authority to client for blind signatures
+        // one blind signature is 96 bytes long
+        println!(
+            "issuance communication cost, issued: {} spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            number_of_to_be_issued_vouchers * 96
         );
 
         let blinded_signatures_shares_per_validator = validators_key_pairs
@@ -449,6 +483,14 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
             serial_numbers,
             infos,
         };
+
+        // communication cost from client to authority for spend
+        // one attribute is 32 bytes long
+        println!(
+            "spend communication cost, spent: {}, {} bytes",
+            number_of_to_be_spent_vouchers,
+            theta_spend.theta.to_bytes().len() + 2 * number_of_to_be_spent_vouchers as usize * 32
+        );
 
         // benchmark spend verification varying spent vouchers
         c.bench_function(

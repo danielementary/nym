@@ -10,7 +10,7 @@ use nymcoconut::{
 
 // define new types for clarity
 type Attribute = Scalar;
-type Attributes = Vec<Attribute>;
+pub type Attributes = Vec<Attribute>;
 
 type Opening = Scalar;
 type Openings = Vec<Opening>;
@@ -39,10 +39,10 @@ impl ECashParams {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Voucher {
-    binding_number: Attribute,
-    value: Attribute,
-    serial_number: Attribute,
-    info: Attribute,
+    pub binding_number: Attribute,
+    pub value: Attribute,
+    pub serial_number: Attribute,
+    pub info: Attribute,
 }
 
 impl Voucher {
@@ -55,7 +55,7 @@ impl Voucher {
         }
     }
 
-    fn new_many(
+    pub fn new_many(
         coconut_params: &Parameters,
         binding_number: &Attribute,
         values: &[Attribute],
@@ -106,9 +106,9 @@ pub struct ThetaSpendAndInfos {
 // used to return a proof theta and the corresponding revealed attributes to verify it
 pub struct ThetaRequestAndInfos {
     pub theta: ThetaRequestPhase,
-    to_be_issued_infos: Attributes,
-    to_be_spent_serial_numbers: Attributes,
-    to_be_spent_infos: Attributes,
+    pub to_be_issued_infos: Attributes,
+    pub to_be_spent_serial_numbers: Attributes,
+    pub to_be_spent_infos: Attributes,
 }
 
 impl VouchersAndSignatures {
@@ -504,7 +504,7 @@ impl ThetaRequestAndInfos {
         (true, self.vouchers_blind_sign(&validator_key_pair))
     }
 
-    fn vouchers_blind_sign(&self, validator_key_pair: &KeyPair) -> Vec<BlindedSignatureShare> {
+    pub fn vouchers_blind_sign(&self, validator_key_pair: &KeyPair) -> Vec<BlindedSignatureShare> {
         izip!(
             self.theta.to_be_issued_commitments.iter(),
             self.theta.to_be_issued_binding_number_commitments.iter(),

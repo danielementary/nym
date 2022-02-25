@@ -1,10 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use bls12_381::Scalar;
-use nymcash::{ECashParams, Voucher};
+use nymcash::{Attributes, ECashParams, ThetaRequestAndInfos, Voucher};
 use nymcoconut::{
     aggregate_verification_keys, issue_range_signatures, keygen, randomise_and_request_vouchers,
-    randomise_and_spend_vouchers, ttp_keygen, Signature, VerificationKey,
+    randomise_and_spend_vouchers, ttp_keygen, verify_request_vouchers, Signature, VerificationKey,
 };
 
 pub fn bench_e2e_e_cash(c: &mut Criterion) {
@@ -22,12 +22,13 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         Scalar::from((range_proof_base_u as u64).pow(range_proof_number_of_elements_l as u32));
 
     let params = ECashParams::new(num_attributes, pay_max, voucher_max);
+    let coconut_params = &params.coconut_params;
 
     // generate validators keypairs
     let number_of_validators = 10;
     let threshold_of_validators = 7;
     let validators_key_pairs = ttp_keygen(
-        &params.coconut_params,
+        &coconut_params,
         threshold_of_validators as u64,
         number_of_validators as u64,
     )
@@ -43,10 +44,10 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
     .unwrap();
 
     // generate range proof signatures
-    let range_proof_keypair = keygen(&params.coconut_params);
+    let range_proof_keypair = keygen(&coconut_params);
     let range_proof_verification_key = range_proof_keypair.verification_key();
     let range_proof_secret_key = range_proof_keypair.secret_key();
-    let range_proof_h = params.coconut_params.gen1() * params.coconut_params.random_scalar();
+    let range_proof_h = coconut_params.gen1() * coconut_params.random_scalar();
 
     let range_proof_signatures = issue_range_signatures(
         &range_proof_h,
@@ -54,24 +55,41 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         range_proof_base_u as usize,
     );
 
-    let binding_number = params.coconut_params.random_scalar();
+    let number_of_to_be_issued_vouchers = 1;
+    let number_of_to_be_spent_vouchers = 0;
 
-    for i in 1..=10 {
-        println!("Request {} 0", i);
+    // create vouchers to be issued
+    let binding_number = coconut_params.random_scalar();
 
-        let number_of_to_be_issued_vouchers = i as u8;
-        let number_of_to_be_spent_vouchers = 0 as u8;
+    let mut to_be_issued_values = vec![];
+    for _ in 0..number_of_to_be_issued_vouchers {
+        to_be_issued_values.push(Scalar::from(10))
+    }
 
-        let mut to_be_issued_values = vec![];
-        for _ in 0..i {
-            to_be_issued_values.push(Scalar::from(10));
-        }
-        let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(i);
+    let to_be_issued_vouchers =
+        Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
 
-        let to_be_spent_values = [];
-        let to_be_spent_signatures = [];
+    let to_be_issued_serial_numbers: Attributes = to_be_issued_vouchers
+        .iter()
+        .map(|voucher| voucher.serial_number)
+        .collect();
 
-        c.bench_function(format!("Proof {} 0", i), |b| {
+    let to_be_issued_infos: Attributes = to_be_issued_vouchers
+        .iter()
+        .map(|voucher| voucher.info)
+        .collect();
+
+    let to_be_spent_values = vec![];
+    let to_be_spent_serial_numbers = vec![];
+    let to_be_spent_infos = vec![];
+    let to_be_spent_signatures = vec![];
+
+    c.bench_function(
+        &format!(
+            "[Client] prepare request, issued: {} spent: {}",
+            number_of_to_be_issued_vouchers, number_of_to_be_spent_vouchers,
+        ),
+        |b| {
             b.iter(|| {
                 randomise_and_request_vouchers(
                     &params.coconut_params,
@@ -88,150 +106,240 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
                     &to_be_spent_values,
                     &to_be_spent_signatures,
                 )
-            });
-        });
+                .unwrap()
+            })
+        },
+    );
 
-        let (theta, _) = randomise_and_request_vouchers(
-            &params.coconut_params,
-            &validators_verification_key,
-            &range_proof_verification_key,
-            &range_proof_signatures,
-            number_of_to_be_issued_vouchers,
-            number_of_to_be_spent_vouchers,
-            range_proof_base_u,
-            range_proof_number_of_elements_l,
-            &binding_number,
-            &to_be_issued_values,
-            &to_be_issued_serial_numbers,
-            &to_be_spent_values,
-            &to_be_spent_signatures,
-        )
-        .unwrap();
+    let (
+        theta,
+        (
+            to_be_issued_binding_numbers_openings,
+            to_be_issued_values_openings,
+            to_be_issued_serial_numbers_openings,
+        ),
+    ) = randomise_and_request_vouchers(
+        &coconut_params,
+        &validators_verification_key,
+        &range_proof_verification_key,
+        &range_proof_signatures,
+        number_of_to_be_issued_vouchers,
+        number_of_to_be_spent_vouchers,
+        range_proof_base_u,
+        range_proof_number_of_elements_l,
+        &binding_number,
+        &to_be_issued_values,
+        &to_be_issued_serial_numbers,
+        &to_be_spent_values,
+        &to_be_spent_signatures,
+    )
+    .unwrap();
 
-        println!("theta length {} bytes", theta.to_bytes().len());
+    let theta_request = ThetaRequestAndInfos {
+        theta,
+        to_be_issued_infos,
+        to_be_spent_serial_numbers,
+        to_be_spent_infos,
+    };
 
-        c.bench_function(format!("Verification {} 0", i), |b| {
+    c.bench_function(
+        &format!(
+            "[Validator] verify request and blind sign, issued: {} spent: {}",
+            number_of_to_be_issued_vouchers, number_of_to_be_spent_vouchers,
+        ),
+        |b| {
             b.iter(|| {
-                theta.verify_proof(
-                    &params.coconut_params,
+                verify_request_vouchers(
+                    &coconut_params,
                     &validators_verification_key,
                     &range_proof_verification_key,
-                )
-            });
-        });
-    }
+                    &theta_request.theta,
+                    &theta_request.to_be_spent_serial_numbers,
+                    &theta_request.to_be_spent_infos,
+                );
+                theta_request.vouchers_blind_sign(&validators_key_pairs[0])
+            })
+        },
+    );
 
-    for i in 1..=10 {
-        println!("Request 1 {}", i);
+    // let binding_number = params.coconut_params.random_scalar();
 
-        let number_of_to_be_issued_vouchers = 1 as u8;
-        let number_of_to_be_spent_vouchers = i as u8;
+    // for i in 1..=10 {
+    //     println!("Request {} 0", i);
 
-        let to_be_issued_values = vec![Scalar::from(i * 10)];
-        let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(1);
+    //     let number_of_to_be_issued_vouchers = i as u8;
+    //     let number_of_to_be_spent_vouchers = 0 as u8;
 
-        let mut to_be_spent_values = vec![];
-        for _ in 0..i {
-            to_be_spent_values.push(Scalar::from(10));
-        }
-        let mut to_be_spent_signatures = vec![];
-        to_be_spent_signatures.push(Signature(
-            params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-            params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-        ));
+    //     let mut to_be_issued_values = vec![];
+    //     for _ in 0..i {
+    //         to_be_issued_values.push(Scalar::from(10));
+    //     }
+    //     let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(i);
 
-        c.bench_function(format!("Proof 1 {}", i), |b| {
-            b.iter(|| {
-                randomise_and_request_vouchers(
-                    &params.coconut_params,
-                    &validators_verification_key,
-                    &range_proof_verification_key,
-                    &range_proof_signatures,
-                    number_of_to_be_issued_vouchers,
-                    number_of_to_be_spent_vouchers,
-                    range_proof_base_u,
-                    range_proof_number_of_elements_l,
-                    &binding_number,
-                    &to_be_issued_values,
-                    &to_be_issued_serial_numbers,
-                    &to_be_spent_values,
-                    &to_be_spent_signatures,
-                )
-            });
-        });
+    //     let to_be_spent_values = [];
+    //     let to_be_spent_signatures = [];
 
-        let (theta, _) = randomise_and_request_vouchers(
-            &params.coconut_params,
-            &validators_verification_key,
-            &range_proof_verification_key,
-            &range_proof_signatures,
-            number_of_to_be_issued_vouchers,
-            number_of_to_be_spent_vouchers,
-            range_proof_base_u,
-            range_proof_number_of_elements_l,
-            &binding_number,
-            &to_be_issued_values,
-            &to_be_issued_serial_numbers,
-            &to_be_spent_values,
-            &to_be_spent_signatures,
-        )
-        .unwrap();
+    //     c.bench_function(format!("Proof {} 0", i), |b| {
+    //         b.iter(|| {
+    //             randomise_and_request_vouchers(
+    //                 &params.coconut_params,
+    //                 &validators_verification_key,
+    //                 &range_proof_verification_key,
+    //                 &range_proof_signatures,
+    //                 number_of_to_be_issued_vouchers,
+    //                 number_of_to_be_spent_vouchers,
+    //                 range_proof_base_u,
+    //                 range_proof_number_of_elements_l,
+    //                 &binding_number,
+    //                 &to_be_issued_values,
+    //                 &to_be_issued_serial_numbers,
+    //                 &to_be_spent_values,
+    //                 &to_be_spent_signatures,
+    //             )
+    //         });
+    //     });
 
-        println!("theta length {} bytes", theta.to_bytes().len());
+    //     let (theta, _) = randomise_and_request_vouchers(
+    //         &params.coconut_params,
+    //         &validators_verification_key,
+    //         &range_proof_verification_key,
+    //         &range_proof_signatures,
+    //         number_of_to_be_issued_vouchers,
+    //         number_of_to_be_spent_vouchers,
+    //         range_proof_base_u,
+    //         range_proof_number_of_elements_l,
+    //         &binding_number,
+    //         &to_be_issued_values,
+    //         &to_be_issued_serial_numbers,
+    //         &to_be_spent_values,
+    //         &to_be_spent_signatures,
+    //     )
+    //     .unwrap();
 
-        c.bench_function(format!("Verification 1 {}", i as usize), |b| {
-            b.iter(|| {
-                theta.verify_proof(
-                    &params.coconut_params,
-                    &validators_verification_key,
-                    &range_proof_verification_key,
-                )
-            });
-        });
-    }
+    //     println!("theta length {} bytes", theta.to_bytes().len());
 
-    for i in 1..=10 {
-        println!("Spend {}", i);
+    //     c.bench_function(format!("Verification {} 0", i), |b| {
+    //         b.iter(|| {
+    //             theta.verify_proof(
+    //                 &params.coconut_params,
+    //                 &validators_verification_key,
+    //                 &range_proof_verification_key,
+    //             )
+    //         });
+    //     });
+    // }
 
-        let mut values = vec![];
-        for _ in 0..i {
-            values.push(Scalar::from(10));
-        }
-        let mut signatures = vec![];
-        for _ in 0..i {
-            signatures.push(Signature(
-                params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-                params.coconut_params.gen1() * params.coconut_params.random_scalar(),
-            ));
-        }
+    // for i in 1..=10 {
+    //     println!("Request 1 {}", i);
 
-        c.bench_function(format!("Proof {}", i), |b| {
-            b.iter(|| {
-                randomise_and_spend_vouchers(
-                    &params.coconut_params,
-                    &validators_verification_key,
-                    &binding_number,
-                    &values,
-                    &signatures,
-                )
-            });
-        });
+    //     let number_of_to_be_issued_vouchers = 1 as u8;
+    //     let number_of_to_be_spent_vouchers = i as u8;
 
-        let theta = randomise_and_spend_vouchers(
-            &params.coconut_params,
-            &validators_verification_key,
-            &binding_number,
-            &values,
-            &signatures,
-        )
-        .unwrap();
+    //     let to_be_issued_values = vec![Scalar::from(i * 10)];
+    //     let to_be_issued_serial_numbers = params.coconut_params.n_random_scalars(1);
 
-        println!("theta length {} bytes", theta.to_bytes().len());
+    //     let mut to_be_spent_values = vec![];
+    //     for _ in 0..i {
+    //         to_be_spent_values.push(Scalar::from(10));
+    //     }
+    //     let mut to_be_spent_signatures = vec![];
+    //     to_be_spent_signatures.push(Signature(
+    //         params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+    //         params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+    //     ));
 
-        c.bench_function(format!("Verification {}", i as usize), |b| {
-            b.iter(|| theta.verify_proof(&params.coconut_params, &validators_verification_key));
-        });
-    }
+    //     c.bench_function(format!("Proof 1 {}", i), |b| {
+    //         b.iter(|| {
+    //             randomise_and_request_vouchers(
+    //                 &params.coconut_params,
+    //                 &validators_verification_key,
+    //                 &range_proof_verification_key,
+    //                 &range_proof_signatures,
+    //                 number_of_to_be_issued_vouchers,
+    //                 number_of_to_be_spent_vouchers,
+    //                 range_proof_base_u,
+    //                 range_proof_number_of_elements_l,
+    //                 &binding_number,
+    //                 &to_be_issued_values,
+    //                 &to_be_issued_serial_numbers,
+    //                 &to_be_spent_values,
+    //                 &to_be_spent_signatures,
+    //             )
+    //         });
+    //     });
+
+    //     let (theta, _) = randomise_and_request_vouchers(
+    //         &params.coconut_params,
+    //         &validators_verification_key,
+    //         &range_proof_verification_key,
+    //         &range_proof_signatures,
+    //         number_of_to_be_issued_vouchers,
+    //         number_of_to_be_spent_vouchers,
+    //         range_proof_base_u,
+    //         range_proof_number_of_elements_l,
+    //         &binding_number,
+    //         &to_be_issued_values,
+    //         &to_be_issued_serial_numbers,
+    //         &to_be_spent_values,
+    //         &to_be_spent_signatures,
+    //     )
+    //     .unwrap();
+
+    //     println!("theta length {} bytes", theta.to_bytes().len());
+
+    //     c.bench_function(format!("Verification 1 {}", i as usize), |b| {
+    //         b.iter(|| {
+    //             theta.verify_proof(
+    //                 &params.coconut_params,
+    //                 &validators_verification_key,
+    //                 &range_proof_verification_key,
+    //             )
+    //         });
+    //     });
+    // }
+
+    // for i in 1..=10 {
+    //     println!("Spend {}", i);
+
+    //     let mut values = vec![];
+    //     for _ in 0..i {
+    //         values.push(Scalar::from(10));
+    //     }
+    //     let mut signatures = vec![];
+    //     for _ in 0..i {
+    //         signatures.push(Signature(
+    //             params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+    //             params.coconut_params.gen1() * params.coconut_params.random_scalar(),
+    //         ));
+    //     }
+
+    //     c.bench_function(format!("Proof {}", i), |b| {
+    //         b.iter(|| {
+    //             randomise_and_spend_vouchers(
+    //                 &params.coconut_params,
+    //                 &validators_verification_key,
+    //                 &binding_number,
+    //                 &values,
+    //                 &signatures,
+    //             )
+    //         });
+    //     });
+
+    //     let theta = randomise_and_spend_vouchers(
+    //         &params.coconut_params,
+    //         &validators_verification_key,
+    //         &binding_number,
+    //         &values,
+    //         &signatures,
+    //     )
+    //     .unwrap();
+
+    //     println!("theta length {} bytes", theta.to_bytes().len());
+
+    //     c.bench_function(format!("Verification {}", i as usize), |b| {
+    //         b.iter(|| theta.verify_proof(&params.coconut_params, &validators_verification_key));
+    //     });
+    // }
 
     c.finish();
 }

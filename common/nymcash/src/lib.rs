@@ -99,8 +99,8 @@ pub struct VouchersAndSignatures {
 // used to return a proof theta and the corresponding revealed attributes to verify it
 pub struct ThetaSpendAndInfos {
     pub theta: ThetaSpendPhase,
-    serial_numbers: Attributes,
-    infos: Attributes,
+    pub serial_numbers: Attributes,
+    pub infos: Attributes,
 }
 
 // used to return a proof theta and the corresponding revealed attributes to verify it
@@ -586,7 +586,7 @@ impl BulletinBoard {
 
 // given the list of all the shares signed by the same validator
 // returns the share grouped for the same voucher
-fn transpose_shares_per_validators_into_shares_per_vouchers(
+pub fn transpose_shares_per_validators_into_shares_per_vouchers(
     signatures_shares: &[BlindedSignatureShares],
 ) -> Vec<BlindedSignatureShares> {
     (0..signatures_shares[0].len())
@@ -602,7 +602,7 @@ fn transpose_shares_per_validators_into_shares_per_vouchers(
         .collect::<Vec<BlindedSignatureShares>>()
 }
 
-fn unblind_vouchers_signatures_shares(
+pub fn unblind_vouchers_signatures_shares(
     blinded_signatures_shares: &Vec<BlindedSignatureShares>,
     blinded_signatures_shares_binding_number_openings: &Openings,
     blinded_signatures_shares_values_openings: &Openings,
@@ -647,7 +647,7 @@ fn unblind_vouchers_signatures_shares(
     .collect()
 }
 
-fn aggregate_vouchers_signatures_shares(
+pub fn aggregate_vouchers_signatures_shares(
     params: &Parameters,
     signatures_shares: &Vec<SignatureShares>,
     vouchers: &Vec<Voucher>,

@@ -16,7 +16,7 @@ use nymcoconut::{
 pub fn bench_e2e_e_cash(c: &mut Criterion) {
     let mut c = c.benchmark_group("sample_size");
     c.sample_size(10);
-    c.measurement_time(Duration::from_secs(10));
+    c.measurement_time(Duration::from_secs(25));
 
     // define e-cash parameters
     let num_attributes = Voucher::number_of_attributes();
@@ -62,7 +62,7 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         range_proof_base_u as usize,
     );
 
-    for iteration in 1..=3 {
+    for iteration in 1..=10 {
         let number_of_to_be_issued_vouchers = iteration;
         let number_of_to_be_spent_vouchers = 0;
 

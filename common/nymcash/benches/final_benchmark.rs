@@ -250,7 +250,6 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         // - spend protocol
         let number_of_to_be_spent_vouchers = number_of_to_be_issued_vouchers;
 
-        let to_be_spent_binding_number = binding_number;
         let to_be_spent_values = to_be_issued_values;
         let to_be_spent_serial_numbers = to_be_issued_vouchers
             .iter()
@@ -412,6 +411,170 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
             },
         );
 
+        let to_be_spent_serial_numbers = theta_request
+            .to_be_spent_serial_numbers
+            .iter()
+            .map(|sn| sn.clone())
+            .collect();
+        let to_be_spent_infos = theta_request
+            .to_be_spent_infos
+            .iter()
+            .map(|i| i.clone())
+            .collect();
+
+        // exchange n vouchers of 10 against n voucher of 10
+        let number_of_to_be_issued_vouchers = number_of_to_be_spent_vouchers;
+        let mut to_be_issued_values = vec![];
+        for _ in 0..number_of_to_be_issued_vouchers {
+            to_be_issued_values.push(Scalar::from(10));
+        }
+        let to_be_issued_vouchers =
+            Voucher::new_many(&coconut_params, &binding_number, &to_be_issued_values);
+        let to_be_issued_serial_numbers: Attributes = to_be_issued_vouchers
+            .iter()
+            .map(|voucher| voucher.serial_number)
+            .collect();
+        let to_be_issued_infos: Attributes = to_be_issued_vouchers
+            .iter()
+            .map(|voucher| voucher.info)
+            .collect();
+
+        // benchmark request varying issued and spent vouchers
+        c.bench_function(
+            &format!(
+                "[Client] prepare request, issued: {} = spent: {}",
+                number_of_to_be_issued_vouchers, number_of_to_be_spent_vouchers,
+            ),
+            |b| {
+                b.iter(|| {
+                    randomise_and_request_vouchers(
+                        &params.coconut_params,
+                        &validators_verification_key,
+                        &range_proof_verification_key,
+                        &range_proof_signatures,
+                        number_of_to_be_issued_vouchers,
+                        number_of_to_be_spent_vouchers,
+                        range_proof_base_u,
+                        range_proof_number_of_elements_l,
+                        &binding_number,
+                        &to_be_issued_values,
+                        &to_be_issued_serial_numbers,
+                        &to_be_spent_values,
+                        &to_be_spent_signatures,
+                    )
+                    .unwrap()
+                })
+            },
+        );
+
+        let (
+            theta,
+            (
+                to_be_issued_binding_numbers_openings,
+                to_be_issued_values_openings,
+                to_be_issued_serial_numbers_openings,
+            ),
+        ) = randomise_and_request_vouchers(
+            &coconut_params,
+            &validators_verification_key,
+            &range_proof_verification_key,
+            &range_proof_signatures,
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            range_proof_base_u,
+            range_proof_number_of_elements_l,
+            &binding_number,
+            &to_be_issued_values,
+            &to_be_issued_serial_numbers,
+            &to_be_spent_values,
+            &to_be_spent_signatures,
+        )
+        .unwrap();
+
+        let theta_request = ThetaRequestAndInfos {
+            theta,
+            to_be_issued_infos,
+            to_be_spent_serial_numbers,
+            to_be_spent_infos,
+        };
+
+        // communication cost from client to authority for request
+        // one attribute is 32 bytes long
+        println!(
+            "request communication cost, issued: {} = spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            theta_request.theta.to_bytes().len()
+                + number_of_to_be_issued_vouchers as usize * 32
+                + 2 * number_of_to_be_spent_vouchers as usize * 32
+        );
+
+        // benchmark issuance varying spent vouchers
+        c.bench_function(
+            &format!(
+                "[Validator] verify request and blind sign, issued: {} = spent: {}",
+                number_of_to_be_issued_vouchers, number_of_to_be_spent_vouchers,
+            ),
+            |b| {
+                b.iter(|| {
+                    assert!(verify_request_vouchers(
+                        &coconut_params,
+                        &validators_verification_key,
+                        &range_proof_verification_key,
+                        &theta_request.theta,
+                        &theta_request.to_be_spent_serial_numbers,
+                        &theta_request.to_be_spent_infos,
+                    ));
+                    theta_request.vouchers_blind_sign(&validators_key_pairs[0])
+                })
+            },
+        );
+
+        // communication cost from authority to client for blind signatures
+        // one blind signature is 96 bytes long
+        println!(
+            "issuance communication cost, issued: {} = spent: {}, {} bytes",
+            number_of_to_be_issued_vouchers,
+            number_of_to_be_spent_vouchers,
+            number_of_to_be_issued_vouchers * 96
+        );
+
+        let blinded_signatures_shares_per_validator = validators_key_pairs
+            .iter()
+            .map(|validator_key_pair| theta_request.vouchers_blind_sign(&validator_key_pair))
+            .collect::<Vec<_>>();
+
+        // benchmark unblind and aggregate varying spent vouchers
+        c.bench_function(
+            &format!(
+                "[Client] unblind and aggregate, issued: {} = spent: {}",
+                number_of_to_be_issued_vouchers, number_of_to_be_spent_vouchers,
+            ),
+            |b| {
+                b.iter(|| {
+                    let blinded_signatures_shares =
+                        transpose_shares_per_validators_into_shares_per_vouchers(
+                            &blinded_signatures_shares_per_validator[..threshold_of_validators],
+                        );
+
+                    let signatures_shares = unblind_vouchers_signatures_shares(
+                        &blinded_signatures_shares,
+                        &to_be_issued_binding_numbers_openings,
+                        &to_be_issued_values_openings,
+                        &to_be_issued_serial_numbers_openings,
+                        &validators_verification_keys,
+                    );
+
+                    aggregate_vouchers_signatures_shares(
+                        &coconut_params,
+                        &signatures_shares,
+                        &to_be_issued_vouchers,
+                        &validators_verification_key,
+                    )
+                })
+            },
+        );
+
         // we don't need to used the issued voucher because we reuse the ones spent
         // when benchmarking the request protocol
         //
@@ -434,13 +597,12 @@ pub fn bench_e2e_e_cash(c: &mut Criterion) {
         //     &validators_verification_key,
         // );
 
-        let binding_number = to_be_spent_binding_number;
         let values = to_be_spent_values;
 
         let serial_numbers = theta_request
             .to_be_spent_serial_numbers
             .iter()
-            .map(|&sn| sn.clone())
+            .map(|sn| sn.clone())
             .collect();
         let infos = theta_request
             .to_be_spent_infos

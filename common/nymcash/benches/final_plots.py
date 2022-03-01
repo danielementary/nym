@@ -33,20 +33,20 @@ issuance_equal_size = [value * 96 for value in x_values]
 
 unblind_equal = [38.714, 62.619, 94.457, 125.17, 151.96, 183.68, 212.76, 242.69, 274.38, 304.13]
 
-spend_client = [18.862, 34.509, 51.780, 68.478, 83.372, 100.15, 116.49, 133.05, 149.62, 166.42]
+spend_user = [18.862, 34.509, 51.780, 68.478, 83.372, 100.15, 116.49, 133.05, 149.62, 166.42]
 spend_size = [488, 808, 1128, 1448, 1768, 2088, 2408, 2728, 3048, 3368]
 spend_verifier = [20.944, 39.551, 57.977, 76.481, 92.709, 111.45, 128.80, 146.49, 164.95, 182.33]
 
 # plot
 fig, ax1 = plt.subplots()
 
-ax1.set_title("Request protocol, client-side", fontsize=16)
+ax1.set_title("Request protocol, user-side", fontsize=16)
 ax1.set_xlabel("Number of vouchers x", fontsize=14)
 ax1.set_ylabel("Computational cost [ms]", fontsize=14)
 
 ax1.plot(x_values, request_issued, label="Request x vouchers", marker="o", alpha=0.8)
 ax1.plot(x_values, request_spent, label="Exchange x vouchers for 1 voucher", marker="o", alpha=0.8)
-ax1.plot(x_values, request_equal, label="Exchange x vouchers for x voucher", marker="o", alpha=0.8)
+ax1.plot(x_values, request_equal, label="Exchange x vouchers for x vouchers", marker="o", alpha=0.8)
 
 ax1.legend(loc="upper left", fontsize=12)
 
@@ -54,19 +54,19 @@ ax1.tick_params(axis="both", which="major", labelsize=12)
 ax1.set_xticks(x_values)
 ax1.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Request protocol, client-side", bbox_inches="tight", dpi=300)
+plt.savefig("Request protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
 fig, ax2 = plt.subplots()
 
-ax2.set_title("Request protocol, from client to authority", fontsize=16)
+ax2.set_title("Request protocol, from user to authority", fontsize=16)
 ax2.set_xlabel("Number of vouchers x", fontsize=14)
 ax2.set_ylabel("Communication cost [bytes]", fontsize=14)
 
 ax2.plot(x_values, request_issued_size, label="Request x vouchers", marker="o", alpha=0.8)
 ax2.plot(x_values, request_spent_size, label="Exchange x vouchers for 1 voucher", marker="o", alpha=0.8)
-ax2.plot(x_values, request_equal_size, label="Exchange x vouchers for x voucher", marker="o", alpha=0.8)
+ax2.plot(x_values, request_equal_size, label="Exchange x vouchers for x vouchers", marker="o", alpha=0.8)
 
 ax2.legend(loc="upper left", fontsize=12)
 
@@ -74,7 +74,7 @@ ax2.tick_params(axis="both", which="major", labelsize=12)
 ax2.set_xticks(x_values)
 ax2.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Request protocol, from client to authority", bbox_inches="tight", dpi=300)
+plt.savefig("Request protocol, from user to authority", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
@@ -86,7 +86,7 @@ ax3.set_ylabel("Computational cost [ms]", fontsize=14)
 
 ax3.plot(x_values, issuance_issued, label="Request x vouchers", marker="o", alpha=0.8)
 ax3.plot(x_values, issuance_spent, label="Exchange x vouchers for 1 voucher", marker="o", alpha=0.8)
-ax3.plot(x_values, issuance_equal, label="Exchange x vouchers for x voucher", marker="o", alpha=0.8)
+ax3.plot(x_values, issuance_equal, label="Exchange x vouchers for x vouchers", marker="o", alpha=0.8)
 
 ax3.legend(loc="upper left", fontsize=12)
 
@@ -100,13 +100,13 @@ plt.savefig("Issuance protocol, authority-side", bbox_inches="tight", dpi=300)
 # plot
 fig, ax4 = plt.subplots()
 
-ax4.set_title("Issuance protocol, from authority to client", fontsize=16)
+ax4.set_title("Issuance protocol, from authority to user", fontsize=16)
 ax4.set_xlabel("Number of vouchers x", fontsize=14)
 ax4.set_ylabel("Communication cost [bytes]", fontsize=14)
 
 ax4.plot(x_values, issuance_issued_size, label="Request x vouchers", marker="o", alpha=0.8)
 ax4.plot(x_values, issuance_spent_size, label="Exchange x vouchers for 1 voucher", marker="o", alpha=0.8)
-ax4.plot(x_values, issuance_equal_size, label="Exchange x vouchers for x voucher", marker="x", alpha=0.8)
+ax4.plot(x_values, issuance_equal_size, label="Exchange x vouchers for x vouchers", marker="x", alpha=0.8)
 
 ax4.legend(loc="upper left", fontsize=12)
 
@@ -114,19 +114,19 @@ ax4.tick_params(axis="both", which="major", labelsize=12)
 ax4.set_xticks(x_values)
 ax4.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Issuance protocol, from authority to client", bbox_inches="tight", dpi=300)
+plt.savefig("Issuance protocol, from authority to user", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
 fig, ax5 = plt.subplots()
 
-ax5.set_title("Issuance protocol, client-side", fontsize=16)
+ax5.set_title("Issuance protocol, user-side", fontsize=16)
 ax5.set_xlabel("Number of vouchers x", fontsize=14)
 ax5.set_ylabel("Computational cost [ms]", fontsize=14)
 
 ax5.plot(x_values, unblind_issued, label="Request x vouchers", marker="o", alpha=0.8)
 ax5.plot(x_values, unblind_spent, label="Exchange x vouchers for 1 voucher", marker="o", alpha=0.8)
-ax5.plot(x_values, unblind_equal, label="Exchange x vouchers for x voucher", marker="x", alpha=0.8)
+ax5.plot(x_values, unblind_equal, label="Exchange x vouchers for x vouchers", marker="x", alpha=0.8)
 
 ax5.legend(loc="upper left", fontsize=12)
 
@@ -134,17 +134,17 @@ ax5.tick_params(axis="both", which="major", labelsize=12)
 ax5.set_xticks(x_values)
 ax5.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Issuance protocol, client-side", bbox_inches="tight", dpi=300)
+plt.savefig("Issuance protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
 fig, ax6 = plt.subplots()
 
-ax6.set_title("Spend protocol, client-side", fontsize=16)
+ax6.set_title("Spend protocol, user-side", fontsize=16)
 ax6.set_xlabel("Number of vouchers x", fontsize=14)
 ax6.set_ylabel("Computational cost [ms]", fontsize=14)
 
-ax6.plot(x_values, spend_client, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
+ax6.plot(x_values, spend_user, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
 
 ax6.legend(loc="upper left", fontsize=12)
 
@@ -152,13 +152,13 @@ ax6.tick_params(axis="both", which="major", labelsize=12)
 ax6.set_xticks(x_values)
 ax6.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Spend protocol, client-side", bbox_inches="tight", dpi=300)
+plt.savefig("Spend protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
 fig, ax6 = plt.subplots()
 
-ax6.set_title("Spend protocol, from client to provider", fontsize=16)
+ax6.set_title("Spend protocol, from user to provider", fontsize=16)
 ax6.set_xlabel("Number of vouchers x", fontsize=14)
 ax6.set_ylabel("Communication cost [bytes]", fontsize=14)
 
@@ -170,7 +170,7 @@ ax6.tick_params(axis="both", which="major", labelsize=12)
 ax6.set_xticks(x_values)
 ax6.grid(True, which="both", axis="both", linestyle="dotted")
 
-plt.savefig("Spend protocol, from client to provider", bbox_inches="tight", dpi=300)
+plt.savefig("Spend protocol, from user to provider", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot

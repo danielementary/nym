@@ -53,6 +53,7 @@ ax1.legend(loc="upper left", fontsize=12)
 ax1.tick_params(axis="both", which="major", labelsize=12)
 ax1.set_xticks(x_values)
 ax1.grid(True, which="both", axis="both", linestyle="dotted")
+ax1.set_ylim(0,1900)
 
 plt.savefig("Request protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
@@ -73,6 +74,7 @@ ax2.legend(loc="upper left", fontsize=12)
 ax2.tick_params(axis="both", which="major", labelsize=12)
 ax2.set_xticks(x_values)
 ax2.grid(True, which="both", axis="both", linestyle="dotted")
+ax2.set_ylim(0,35000)
 
 plt.savefig("Request protocol, from user to authority", bbox_inches="tight", dpi=300)
 # plt.show()
@@ -93,6 +95,7 @@ ax3.legend(loc="upper left", fontsize=12)
 ax3.tick_params(axis="both", which="major", labelsize=12)
 ax3.set_xticks(x_values)
 ax3.grid(True, which="both", axis="both", linestyle="dotted")
+ax3.set_ylim(0,1700)
 
 plt.savefig("Issuance protocol, authority-side", bbox_inches="tight", dpi=300)
 # plt.show()
@@ -113,6 +116,7 @@ ax4.legend(loc="upper left", fontsize=12)
 ax4.tick_params(axis="both", which="major", labelsize=12)
 ax4.set_xticks(x_values)
 ax4.grid(True, which="both", axis="both", linestyle="dotted")
+ax4.set_ylim(0,1100)
 
 plt.savefig("Issuance protocol, from authority to user", bbox_inches="tight", dpi=300)
 # plt.show()
@@ -133,6 +137,7 @@ ax5.legend(loc="upper left", fontsize=12)
 ax5.tick_params(axis="both", which="major", labelsize=12)
 ax5.set_xticks(x_values)
 ax5.grid(True, which="both", axis="both", linestyle="dotted")
+ax5.set_ylim(0,350)
 
 plt.savefig("Issuance protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
@@ -151,42 +156,45 @@ ax6.legend(loc="upper left", fontsize=12)
 ax6.tick_params(axis="both", which="major", labelsize=12)
 ax6.set_xticks(x_values)
 ax6.grid(True, which="both", axis="both", linestyle="dotted")
+ax6.set_ylim(0,180)
 
 plt.savefig("Spend protocol, user-side", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
-fig, ax6 = plt.subplots()
+fig, ax7 = plt.subplots()
 
-ax6.set_title("Spend protocol, from user to provider", fontsize=16)
-ax6.set_xlabel("Number of vouchers x", fontsize=14)
-ax6.set_ylabel("Communication cost [bytes]", fontsize=14)
+ax7.set_title("Spend protocol, from user to provider", fontsize=16)
+ax7.set_xlabel("Number of vouchers x", fontsize=14)
+ax7.set_ylabel("Communication cost [bytes]", fontsize=14)
 
-ax6.plot(x_values, spend_size, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
+ax7.plot(x_values, spend_size, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
 
-ax6.legend(loc="upper left", fontsize=12)
+ax7.legend(loc="upper left", fontsize=12)
 
-ax6.tick_params(axis="both", which="major", labelsize=12)
-ax6.set_xticks(x_values)
-ax6.grid(True, which="both", axis="both", linestyle="dotted")
+ax7.tick_params(axis="both", which="major", labelsize=12)
+ax7.set_xticks(x_values)
+ax7.grid(True, which="both", axis="both", linestyle="dotted")
+ax7.set_ylim(0,3500)
 
 plt.savefig("Spend protocol, from user to provider", bbox_inches="tight", dpi=300)
 # plt.show()
 
 # plot
-fig, ax6 = plt.subplots()
+fig, ax8 = plt.subplots()
 
-ax6.set_title("Spend protocol, provider-side", fontsize=16)
-ax6.set_xlabel("Number of vouchers x", fontsize=14)
-ax6.set_ylabel("Computational cost [ms]", fontsize=14)
+ax8.set_title("Spend protocol, provider-side", fontsize=16)
+ax8.set_xlabel("Number of vouchers x", fontsize=14)
+ax8.set_ylabel("Computational cost [ms]", fontsize=14)
 
-ax6.plot(x_values, spend_verifier, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
+ax8.plot(x_values, spend_verifier, label="Spend x vouchers", marker="o", alpha=0.8, color="red")
 
-ax6.legend(loc="upper left", fontsize=12)
+ax8.legend(loc="upper left", fontsize=12)
 
-ax6.tick_params(axis="both", which="major", labelsize=12)
-ax6.set_xticks(x_values)
-ax6.grid(True, which="both", axis="both", linestyle="dotted")
+ax8.tick_params(axis="both", which="major", labelsize=12)
+ax8.set_xticks(x_values)
+ax8.grid(True, which="both", axis="both", linestyle="dotted")
+ax8.set_ylim(0,190)
 
 plt.savefig("Spend protocol, provider-side", bbox_inches="tight", dpi=300)
 # plt.show()
